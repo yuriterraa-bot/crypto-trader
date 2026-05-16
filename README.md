@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Crypto Trader Bot
 
-## Getting Started
+## Stack
+- Next.js 14, TypeScript, Tailwind CSS, shadcn/ui
+- Supabase (banco de dados + realtime)
+- Vercel (hospedagem + cron jobs)
+- Binance Futures API
+- Groq AI (LLaMA 3.3-70B)
 
-First, run the development server:
+## Variáveis de Ambiente necessárias:
+BINANCE_API_KEY=
+BINANCE_SECRET_KEY=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_KEY=
+GROQ_API_KEY=
+CRON_SECRET=
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Deploy na Vercel (passo a passo):
+1. Criar conta em vercel.com
+2. Importar repositório GitHub
+3. Em "Environment Variables", adicionar todas as variáveis acima
+4. Clicar em Deploy
+5. Após deploy, ir em Settings > Cron Jobs para verificar o scheduler
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Supabase (passo a passo):
+1. Criar projeto em supabase.com
+2. Ir em SQL Editor
+3. Executar todos os CREATE TABLE do arquivo lib/supabase.ts
+4. Ir em Authentication > Policies e habilitar RLS se necessário
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Como usar:
+- Acesse o dashboard na URL da Vercel
+- Configure os parâmetros das estratégias no StrategyPanel
+- Ative o Paper Trade primeiro para testar sem dinheiro real
+- Monitore os sinais no TradingLog
+- Quando satisfeito com os resultados, desative o Paper Trade
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## AVISO DE RISCO:
+Trading de futuros de criptomoedas envolve alto risco de perda financeira.
+Use sempre o modo Paper Trade para validar estratégias antes de operar com 
+dinheiro real. Nunca invista mais do que você pode perder.
