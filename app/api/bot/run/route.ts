@@ -32,8 +32,30 @@ export async function POST(request: Request) {
     if (configError) throw configError;
     const config = configData as any; // Using any because of new columns
 
-    if (!config.is_running || !config.strategy_config) {
-      return NextResponse.json({ status: 'stopped', message: 'Bot is not running or no strategy config' });
+    // Se strategy_config está vazio, usar padrão
+    const strategyConfig = config.strategy_config && 
+      Object.keys(config.strategy_config).length > 0 
+      ? config.strategy_config 
+      : {
+        indicators: {
+          ma: { active: true, weight: 5 },
+          stochastic: { active: true, weight: 3 },
+          fibonacci: { active: true, weight: 4 },
+          didi: { active: true, weight: 4 },
+          nadaraya: { active: true, weight: 6 },
+          smc: { active: true, weight: 7 },
+          mtf: { active: true, weight: 5 }
+        },
+        thresholds: { buy: 60, sell: 60 },
+        risk: { per_trade: 1.0, rr_ratio: 2, atr_multiplier: 2 }
+      };
+
+    // Só parar se bot não estiver rodando
+    if (!config.is_running) {
+      return NextResponse.json({ 
+        status: 'stopped', 
+        message: 'Bot pausado. Clique em Iniciar Bot.' 
+      });
     }
 
     const timeframe = config.timeframe || '15m';
@@ -82,7 +104,7 @@ export async function POST(request: Request) {
       if (session === 'OVERLAP_LONDON_NY' && (!sessionFilters.london || !sessionFilters.ny)) sessionAllowed = false;
 
       // Run confluence engine
-      const { score, signal: techSignal, breakdown } = runConfluenceEngine(klines, config.strategy_config, mtfAlignment, confidenceMultiplier);
+      const { score, signal: techSignal, breakdown } = runConfluenceEngine(klines, strategyConfig, mtfAlignment, confidenceMultiplier);
       
       let action = 'none';
       let riskResult = null;
@@ -136,9 +158,9 @@ export async function POST(request: Request) {
 
           const combinedScore = (score * 0.6) + (newsScore * 0.2) + (aiScore * 0.2);
 
-          if (combinedScore > config.strategy_config.thresholds.buy) {
+          if (combinedScore > strategyConfig.thresholds.buy) {
              finalRecommendation = 'BUY';
-          } else if (combinedScore < -config.strategy_config.thresholds.sell) {
+          } else if (combinedScore < -strategyConfig.thresholds.sell) {
              finalRecommendation = 'SELL';
           } else {
              finalRecommendation = 'NEUTRAL';
@@ -152,7 +174,7 @@ export async function POST(request: Request) {
         // Run risk manager
         riskResult = calculateRisk(
           klines, 
-          config.strategy_config, 
+          strategyConfig, 
           usdtBalance, 
           activePositionsCount, 
           config.max_positions, 

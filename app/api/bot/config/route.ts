@@ -1,13 +1,25 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { BotConfig } from '@/types';
 
-const DEFAULT_CONFIG = { 
-  is_running: false, 
-  risk_per_trade: 1.0, 
-  max_positions: 5,
-  is_paper_trade: true, 
-  timeframe: '15m' 
+const DEFAULT_CONFIG = {
+  is_running: false,
+  is_paper_trade: true,
+  risk_per_trade: 1.0,
+  max_positions: 3,
+  timeframe: '15m',
+  strategy_config: {
+    indicators: {
+      ma: { active: true, weight: 5 },
+      stochastic: { active: true, weight: 3 },
+      fibonacci: { active: true, weight: 4 },
+      didi: { active: true, weight: 4 },
+      nadaraya: { active: true, weight: 6 },
+      smc: { active: true, weight: 7 },
+      mtf: { active: true, weight: 5 }
+    },
+    thresholds: { buy: 60, sell: 60 },
+    risk: { per_trade: 1.0, rr_ratio: 2, atr_multiplier: 2 }
+  }
 };
 
 export async function GET() {
@@ -19,12 +31,36 @@ export async function GET() {
       .limit(1)
       .single();
 
-    if (error) {
-      console.warn('[GET /api/bot/config] Supabase error (possibly missing column or row):', error.message);
+    if (error && error.code !== 'PGRST116') {
+      console.warn('[GET /api/bot/config] Supabase error:', error.message);
+    }
+
+    if (!data) {
+      // Faz insert do default se não existe nenhum registro
+      const { data: insertedData, error: insertError } = await supabase
+        .from('bot_config')
+        .insert([DEFAULT_CONFIG])
+        .select()
+        .single();
+        
+      if (!insertError && insertedData) return NextResponse.json(insertedData);
       return NextResponse.json(DEFAULT_CONFIG);
     }
 
-    return NextResponse.json(data || DEFAULT_CONFIG);
+    // Se existe mas strategy_config está vazio
+    if (!data.strategy_config || Object.keys(data.strategy_config).length === 0) {
+      const { data: updatedData, error: updateError } = await supabase
+        .from('bot_config')
+        .update({ strategy_config: DEFAULT_CONFIG.strategy_config })
+        .eq('id', data.id)
+        .select()
+        .single();
+        
+      if (!updateError && updatedData) return NextResponse.json(updatedData);
+      return NextResponse.json({ ...data, strategy_config: DEFAULT_CONFIG.strategy_config });
+    }
+
+    return NextResponse.json(data);
   } catch (error: any) {
     console.error('[GET /api/bot/config] Error:', error);
     return NextResponse.json(DEFAULT_CONFIG);
@@ -35,52 +71,41 @@ export async function POST(request: Request) {
   try {
     const body: any = await request.json();
     
-    // Tenta atualizar com os novos campos
-    let updatePayload = {
-      is_running: body.is_running,
-      is_paper_trade: body.is_paper_trade,
-      risk_per_trade: body.risk_per_trade,
-      max_positions: body.max_positions,
-      strategy_config: body.strategy_config,
-      timeframe: body.timeframe,
-      session_filter: body.session_filter,
-      use_mtf: body.use_mtf,
-      updated_at: new Date().toISOString()
-    };
-
     const { data: existing } = await supabase
       .from('bot_config')
-      .select('id')
+      .select('*')
       .limit(1)
       .single();
 
     let result;
-    
-    const upsertConfig = async (payload: any) => {
-      if (existing) {
-        return supabase.from('bot_config').update(payload).eq('id', existing.id).select().single();
-      } else {
-        return supabase.from('bot_config').insert([payload]).select().single();
+
+    if (existing) {
+      // Remove campos indefinidos para não sobrescrever com null
+      const updatePayload: any = { updated_at: new Date().toISOString() };
+      
+      const allowedKeys = ['is_running', 'is_paper_trade', 'risk_per_trade', 'max_positions', 'strategy_config', 'timeframe', 'session_filter', 'use_mtf'];
+      allowedKeys.forEach(key => {
+        if (body[key] !== undefined) {
+          updatePayload[key] = body[key];
+        }
+      });
+
+      result = await supabase.from('bot_config').update(updatePayload).eq('id', existing.id).select().single();
+      
+      // Fallback sem colunas novas se falhar
+      if (result.error && result.error.message.includes('column')) {
+        console.warn('[POST /api/bot/config] Colunas faltando, tentando sem novos campos');
+        delete updatePayload.timeframe;
+        delete updatePayload.session_filter;
+        delete updatePayload.use_mtf;
+        result = await supabase.from('bot_config').update(updatePayload).eq('id', existing.id).select().single();
       }
-    };
-
-    result = await upsertConfig(updatePayload);
-
-    // Se der erro por conta de colunas não existentes, tenta sem elas
-    if (result.error && result.error.message.includes('column')) {
-      console.warn('[POST /api/bot/config] Colunas faltando, atualizando com schema legado...');
-      const fallbackPayload = {
-        is_running: body.is_running,
-        is_paper_trade: body.is_paper_trade,
-        risk_per_trade: body.risk_per_trade,
-        max_positions: body.max_positions,
-        strategy_config: body.strategy_config,
-        updated_at: new Date().toISOString()
-      };
-      result = await upsertConfig(fallbackPayload);
+    } else {
+      const insertPayload = { ...DEFAULT_CONFIG, ...body };
+      result = await supabase.from('bot_config').insert([insertPayload]).select().single();
     }
 
-    return NextResponse.json(result?.data || DEFAULT_CONFIG, { status: 200 });
+    return NextResponse.json(result?.data || { ...existing, ...body }, { status: 200 });
   } catch (error: any) {
     console.error('[POST /api/bot/config] Error:', error);
     return NextResponse.json(DEFAULT_CONFIG, { status: 200 });

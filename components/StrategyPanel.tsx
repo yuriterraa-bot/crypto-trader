@@ -9,15 +9,16 @@ import { Settings2, Save, BarChart3, TrendingUp, Layers, Compass, Zap, Target } 
 
 const defaultConfig: StrategyConfig = {
   indicators: {
-    ma: { active: true, weight: 1 },
-    stochastic: { active: true, weight: 1 },
-    fibonacci: { active: true, weight: 2 },
-    didi: { active: true, weight: 3 },
-    nadaraya: { active: true, weight: 3 },
-    smc: { active: true, weight: 4 },
+    ma: { active: true, weight: 5 },
+    stochastic: { active: true, weight: 3 },
+    fibonacci: { active: true, weight: 4 },
+    didi: { active: true, weight: 4 },
+    nadaraya: { active: true, weight: 6 },
+    smc: { active: true, weight: 7 },
+    mtf: { active: true, weight: 5 }
   },
   thresholds: { buy: 60, sell: 60 },
-  risk: { per_trade: 1, rr_ratio: 2, atr_multiplier: 1.5 },
+  risk: { per_trade: 1, rr_ratio: 2, atr_multiplier: 2 },
 };
 
 const indIcons: Record<string, React.ReactNode> = {
@@ -60,16 +61,32 @@ export default function StrategyPanel() {
   const saveConfig = async () => {
     setSaving(true);
     try {
-      const payload: BotConfig = {
-        ...(config || { is_running: false, max_positions: 5 }),
-        is_paper_trade: config?.is_paper_trade ?? true,
-        risk_per_trade: strategy.risk.per_trade,
-        strategy_config: strategy
+      const payload = {
+        strategy_config: {
+          indicators: {
+            ma: strategy.indicators.ma || { active: true, weight: 5 },
+            stochastic: strategy.indicators.stochastic || { active: true, weight: 3 },
+            fibonacci: strategy.indicators.fibonacci || { active: true, weight: 4 },
+            didi: strategy.indicators.didi || { active: true, weight: 4 },
+            nadaraya: strategy.indicators.nadaraya || { active: true, weight: 6 },
+            smc: strategy.indicators.smc || { active: true, weight: 7 },
+            mtf: strategy.indicators.mtf || { active: true, weight: 5 }
+          },
+          thresholds: { 
+            buy: strategy.thresholds.buy, 
+            sell: Math.abs(strategy.thresholds.sell) 
+          },
+          risk: { 
+            per_trade: strategy.risk.per_trade, 
+            rr_ratio: strategy.risk.rr_ratio, 
+            atr_multiplier: 2 
+          }
+        }
       };
       
       const { data } = await axios.post('/api/bot/config', payload);
       setConfig(data);
-      alert('Configuração salva com sucesso!');
+      alert('Configuração salva!');
     } catch (error) {
       console.error('Failed to save config:', error);
       alert('Erro ao salvar configuração.');

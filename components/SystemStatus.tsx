@@ -59,9 +59,19 @@ export default function SystemStatus() {
   const toggleBot = async () => {
     setLoading(true);
     try {
-      // Assuming a POST to /api/bot/config exists or we just toggle local state for now
-      // Here we just toggle visual state as requested to keep it simple, but ideally would hit API
-      setBotConfig(prev => ({ ...prev, is_running: !prev.is_running }));
+      const newState = !botConfig.is_running;
+      await axios.post('/api/bot/config', { is_running: newState });
+      setBotConfig(prev => ({ ...prev, is_running: newState }));
+      
+      if (newState) {
+        alert("Bot iniciado! Analisando mercado...");
+        // Forçar primeira execução sem esperar o cron
+        axios.post('/api/bot/run').catch(console.error);
+      } else {
+        alert("Bot pausado.");
+      }
+    } catch (error) {
+      alert("Erro ao alterar status do bot");
     } finally {
       setLoading(false);
     }
