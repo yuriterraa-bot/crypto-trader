@@ -92,3 +92,20 @@ CREATE TABLE cron_logs (
   error TEXT
 );
 */
+
+/*
+-- Executar no Supabase SQL Editor:
+ALTER TABLE cron_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for service role" ON cron_logs
+  USING (true) WITH CHECK (true);
+
+ALTER TABLE ai_analysis ENABLE ROW LEVEL SECURITY;  
+CREATE POLICY "Allow all for service role" ON ai_analysis
+  USING (true) WITH CHECK (true);
+
+ALTER TABLE signals ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow read for anon" ON signals
+  FOR SELECT USING (true);
+CREATE POLICY "Allow insert for service role" ON signals
+  FOR INSERT WITH CHECK (true);
+*/
