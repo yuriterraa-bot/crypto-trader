@@ -6,7 +6,8 @@ import { trailingStop, breakEven, dailyLossLimit } from '@/lib/strategies/riskMa
 // Endpoint chamado via Cron ou internamente
 export async function GET() {
   try {
-    const { data: config } = await supabase.from('bot_config').select('*').limit(1).single();
+    const { data: configRows } = await supabase.from('bot_config').select('*').limit(1);
+    const config = configRows && configRows.length > 0 ? configRows[0] : null;
     if (!config || !config.is_running) {
       return NextResponse.json({ status: 'skipped', message: 'Bot stopped' });
     }

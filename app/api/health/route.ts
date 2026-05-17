@@ -8,9 +8,10 @@ export async function GET(request: Request) {
 
   try {
     // 1. Test Supabase
-    const { count, error } = await supabase
+    const { data: configRows, error } = await supabase
       .from('bot_config')
-      .select('*', { count: 'exact', head: true });
+      .select('id')
+      .limit(1);
       
     if (!error) {
       supabaseOk = true;

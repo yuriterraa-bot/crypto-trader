@@ -24,39 +24,40 @@ const DEFAULT_CONFIG = {
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const { data: configRows, error } = await supabase
       .from('bot_config')
       .select('*')
       .order('updated_at', { ascending: false })
-      .limit(1)
-      .single();
+      .limit(1);
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
       console.warn('[GET /api/bot/config] Supabase error:', error.message);
     }
 
+    const data = (configRows && configRows.length > 0) ? configRows[0] : null;
+
     if (!data) {
       // Faz insert do default se não existe nenhum registro
-      const { data: insertedData, error: insertError } = await supabase
+      const { data: insertedRows, error: insertError } = await supabase
         .from('bot_config')
         .insert([DEFAULT_CONFIG])
         .select()
-        .single();
+        .limit(1);
         
-      if (!insertError && insertedData) return NextResponse.json(insertedData);
+      if (!insertError && insertedRows && insertedRows.length > 0) return NextResponse.json(insertedRows[0]);
       return NextResponse.json(DEFAULT_CONFIG);
     }
 
     // Se existe mas strategy_config está vazio
     if (!data.strategy_config || Object.keys(data.strategy_config).length === 0) {
-      const { data: updatedData, error: updateError } = await supabase
+      const { data: updatedRows, error: updateError } = await supabase
         .from('bot_config')
         .update({ strategy_config: DEFAULT_CONFIG.strategy_config })
         .eq('id', data.id)
         .select()
-        .single();
+        .limit(1);
         
-      if (!updateError && updatedData) return NextResponse.json(updatedData);
+      if (!updateError && updatedRows && updatedRows.length > 0) return NextResponse.json(updatedRows[0]);
       return NextResponse.json({ ...data, strategy_config: DEFAULT_CONFIG.strategy_config });
     }
 
@@ -71,11 +72,12 @@ export async function POST(request: Request) {
   try {
     const body: any = await request.json();
     
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
       .from('bot_config')
       .select('*')
-      .limit(1)
-      .single();
+      .limit(1);
+
+    const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
 
     let result;
 
@@ -90,7 +92,7 @@ export async function POST(request: Request) {
         }
       });
 
-      result = await supabase.from('bot_config').update(updatePayload).eq('id', existing.id).select().single();
+      result = await supabase.from('bot_config').update(updatePayload).eq('id', existing.id).select().limit(1);
       
       // Fallback sem colunas novas se falhar
       if (result.error && result.error.message.includes('column')) {
@@ -98,14 +100,15 @@ export async function POST(request: Request) {
         delete updatePayload.timeframe;
         delete updatePayload.session_filter;
         delete updatePayload.use_mtf;
-        result = await supabase.from('bot_config').update(updatePayload).eq('id', existing.id).select().single();
+        result = await supabase.from('bot_config').update(updatePayload).eq('id', existing.id).select().limit(1);
       }
     } else {
       const insertPayload = { ...DEFAULT_CONFIG, ...body };
-      result = await supabase.from('bot_config').insert([insertPayload]).select().single();
+      result = await supabase.from('bot_config').insert([insertPayload]).select().limit(1);
     }
 
-    return NextResponse.json(result?.data || { ...existing, ...body }, { status: 200 });
+    const returnData = (result?.data && result.data.length > 0) ? result.data[0] : { ...existing, ...body };
+    return NextResponse.json(returnData, { status: 200 });
   } catch (error: any) {
     console.error('[POST /api/bot/config] Error:', error);
     return NextResponse.json(DEFAULT_CONFIG, { status: 200 });

@@ -20,9 +20,9 @@ export default function TimeframeSelector() {
   const fetchConfig = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from('bot_config').select('timeframe').limit(1).single();
-      if (!error && data?.timeframe) {
-        setActiveTf(data.timeframe);
+      const { data: configRows, error } = await supabase.from('bot_config').select('timeframe').limit(1);
+      if (!error && configRows && configRows.length > 0 && configRows[0].timeframe) {
+        setActiveTf(configRows[0].timeframe);
       }
     } catch (e) {
       console.error(e);
@@ -37,9 +37,9 @@ export default function TimeframeSelector() {
       setSaving(true);
       setActiveTf(tf);
       
-      const { data } = await supabase.from('bot_config').select('id').limit(1).single();
-      if (data?.id) {
-        await supabase.from('bot_config').update({ timeframe: tf }).eq('id', data.id);
+      const { data: idRows } = await supabase.from('bot_config').select('id').limit(1);
+      if (idRows && idRows.length > 0) {
+        await supabase.from('bot_config').update({ timeframe: tf }).eq('id', idRows[0].id);
       } else {
         await supabase.from('bot_config').insert({ timeframe: tf, is_running: false, risk_per_trade: 1.0, max_positions: 5 });
       }

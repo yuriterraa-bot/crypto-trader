@@ -23,32 +23,44 @@ export async function POST(request: Request) {
     }
 
     // 1. Get bot config
-    const { data: configData, error: configError } = await supabase
+    const { data: configRows, error: configError } = await supabase
       .from('bot_config')
       .select('*')
-      .limit(1)
-      .single();
+      .limit(1);
 
     if (configError) throw configError;
-    const config = configData as any; // Using any because of new columns
 
-    // Se strategy_config está vazio, usar padrão
+    const defaultStrategyConfig = {
+      indicators: {
+        ma: { active: true, weight: 5 },
+        stochastic: { active: true, weight: 3 },
+        fibonacci: { active: true, weight: 4 },
+        didi: { active: true, weight: 4 },
+        nadaraya: { active: true, weight: 6 },
+        smc: { active: true, weight: 7 },
+        mtf: { active: true, weight: 5 }
+      },
+      thresholds: { buy: 60, sell: 60 },
+      risk: { per_trade: 1.0, rr_ratio: 2, atr_multiplier: 2 }
+    };
+
+    // Se não há config, usar padrão e continuar
+    const config = (configRows && configRows.length > 0) 
+      ? configRows[0] 
+      : {
+          is_running: true,
+          is_paper_trade: true,
+          risk_per_trade: 1.0,
+          max_positions: 3,
+          timeframe: '15m',
+          strategy_config: defaultStrategyConfig
+        };
+
+    // Se strategy_config está vazio no registro, usar padrão
     const strategyConfig = config.strategy_config && 
       Object.keys(config.strategy_config).length > 0 
       ? config.strategy_config 
-      : {
-        indicators: {
-          ma: { active: true, weight: 5 },
-          stochastic: { active: true, weight: 3 },
-          fibonacci: { active: true, weight: 4 },
-          didi: { active: true, weight: 4 },
-          nadaraya: { active: true, weight: 6 },
-          smc: { active: true, weight: 7 },
-          mtf: { active: true, weight: 5 }
-        },
-        thresholds: { buy: 60, sell: 60 },
-        risk: { per_trade: 1.0, rr_ratio: 2, atr_multiplier: 2 }
-      };
+      : defaultStrategyConfig;
 
     // Só parar se bot não estiver rodando
     if (!config.is_running) {
