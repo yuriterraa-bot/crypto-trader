@@ -38,11 +38,16 @@ export async function GET() {
       usdt?.crossWalletBalance || '0'
     );
     
-    return NextResponse.json({ 
-      balance: balance.toFixed(2),
-      total: balance.toFixed(2),
-      raw: usdt // para debug
-    });
+    return NextResponse.json(
+      { balance: balance.toFixed(2), total: balance.toFixed(2), raw: usdt },
+      { 
+        status: 200,
+        headers: { 
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache'
+        } 
+      }
+    );
   } catch (error: any) {
     console.error('Balance error:', error.response?.data || error.message);
     return NextResponse.json({ balance: '0', total: '0' }, { status: 200 });

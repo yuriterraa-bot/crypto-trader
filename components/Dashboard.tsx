@@ -14,6 +14,7 @@ import TradingLog from './TradingLog';
 import RiskManagerPanel from './RiskManagerPanel';
 import TimeframeSelector from './TimeframeSelector';
 import PerformanceDashboard from './PerformanceDashboard';
+import OpenPositions from './OpenPositions';
 
 export default function Dashboard() {
   return (
@@ -34,6 +35,11 @@ export default function Dashboard() {
         {/* Linha Nova: Performance Analytics */}
         <div className="grid gap-6 grid-cols-1 pt-4 pb-2">
           <PerformanceDashboard />
+        </div>
+
+        {/* Posições Abertas */}
+        <div className="grid gap-6 grid-cols-1">
+          <OpenPositions />
         </div>
 
         {/* Linha 3: Boleta de Ordens Manual */}

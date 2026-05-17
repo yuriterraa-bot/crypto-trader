@@ -263,6 +263,26 @@ export async function POST(request: Request) {
       results.push({ symbol, score, techSignal, finalRecommendation, action, risk: riskResult, ai: aiResult, sessionAllowed });
     }
 
+    // Auto-reagendar se timeframe < 5m
+    const tf = config.timeframe || '15m';
+    if (['1m', '3m'].includes(tf) && config.is_running) {
+      const delay = tf === '1m' ? 60000 : 180000;
+      setTimeout(async () => {
+        try {
+          await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/bot/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: 'BTCUSDT' })
+          });
+          await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/bot/run`, {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: 'ETHUSDT' })
+          });
+        } catch(e) {}
+      }, delay);
+    }
+
     return NextResponse.json({ status: 'success', results });
   } catch (error: any) {
     console.error('=== BOT RUN ERROR ===');

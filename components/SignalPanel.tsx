@@ -18,11 +18,37 @@ export default function SignalPanel() {
   const fetchSignals = async () => {
     try {
       setLoading(true);
-      const res = await axios.get('/api/signal');
-      if (res.data && res.data.success) {
-        setData(res.data.data);
-        setLastUpdate(new Date());
-      }
+      const res = await fetch('/api/signal', { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
+      const apiData = await res.json();
+      
+      const mapData = (coinData: any) => {
+        if (!coinData?.signal) return null;
+        return {
+          combined: { 
+            recommendation: coinData.signal.signal_type || 'NEUTRAL', 
+            score: coinData.signal.score || 0 
+          },
+          technical: { 
+            score: (coinData.signal.score || 0) * 0.6, 
+            breakdown: coinData.signal.breakdown || [] 
+          },
+          ai: { 
+            recommendation: coinData.ai?.recommendation || 'NEUTRAL', 
+            confidence: coinData.ai?.confidence || 0, 
+            reasoning: coinData.ai?.reasoning || 'Aguardando mais dados para análise...' 
+          },
+          news: { 
+            score: (coinData.ai?.news_sentiment || 0) * 100, 
+            fearGreedIndex: 50 
+          }
+        };
+      };
+
+      setData({
+        'BTCUSDT': mapData(apiData.btc),
+        'ETHUSDT': mapData(apiData.eth)
+      });
+      setLastUpdate(new Date());
     } catch (error) {
       console.error('Erro ao buscar sinais:', error);
     } finally {
