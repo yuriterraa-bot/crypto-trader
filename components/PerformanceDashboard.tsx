@@ -10,7 +10,6 @@ import { format, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fn
 
 export default function PerformanceDashboard() {
   const [trades, setTrades] = useState<any[]>([]);
-  const [equityData, setEquityData] = useState<any[]>([]);
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
 

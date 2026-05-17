@@ -11,7 +11,17 @@ export default function TradingLog() {
   const [logs, setLogs] = useState<any[]>([]);
   const [mounted, setMounted] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
+  const fetchInitialLogs = async () => {
+    const { data } = await supabase
+      .from('signals')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+      
     if (data) {
       setLogs(data.reverse()); // reverse so newest is at the bottom
     }
