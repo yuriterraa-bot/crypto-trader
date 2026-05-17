@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase';
 export default function AiSignalCard() {
   const [loading, setLoading] = useState(false);
   const [signals, setSignals] = useState<Record<string, any>>({});
+  const [mounted, setMounted] = useState(false);
   
   const fetchLatestSignals = async () => {
     try {
@@ -37,6 +38,7 @@ export default function AiSignalCard() {
   };
 
   useEffect(() => {
+    setMounted(true);
     fetchLatestSignals();
     const interval = setInterval(fetchLatestSignals, 5 * 60 * 1000);
     return () => clearInterval(interval);
@@ -61,7 +63,7 @@ export default function AiSignalCard() {
       case 'NEUTRAL': return 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/50';
       case 'SELL': return 'bg-red-500/20 text-red-500 border border-red-500/50';
       case 'STRONG_SELL': return 'bg-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]';
-      default: return 'bg-secondary text-muted-foreground';
+      default: return 'bg-secondary/50 text-muted-foreground border border-border';
     }
   };
 
@@ -76,8 +78,10 @@ export default function AiSignalCard() {
     }
   };
 
+  if (!mounted) return null;
+
   return (
-    <Card className="bg-card border-border shadow-md w-full h-full flex flex-col">
+    <Card className="bg-card border-border shadow-md col-span-full xl:col-span-1 flex flex-col h-full">
       <CardHeader className="pb-4 border-b border-border/50 bg-secondary/10 flex flex-row items-center justify-between">
         <div className="flex items-center space-x-2">
           <BrainCircuit className="h-6 w-6 text-primary" />

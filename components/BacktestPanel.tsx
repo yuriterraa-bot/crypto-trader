@@ -23,6 +23,11 @@ export default function BacktestPanel() {
   const [metrics, setMetrics] = useState<BacktestMetrics | null>(null);
   const [equityData, setEquityData] = useState<{trade: number, balance: number}[]>([]);
   const [history, setHistory] = useState<any[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [topConfigs, setTopConfigs] = useState<any[]>([]);
 
   const fetchHistory = async () => {
@@ -81,6 +86,8 @@ export default function BacktestPanel() {
       setLoading(false);
     }
   };
+
+  if (!mounted) return null;
 
   return (
     <Card className="bg-card border-border shadow-md w-full h-full flex flex-col">
@@ -194,7 +201,7 @@ export default function BacktestPanel() {
               <h4 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-6 flex items-center">
                 <TrendingUp className="h-4 w-4 mr-2" /> Curva de Capital (Equity)
               </h4>
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <LineChart data={equityData} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.4} />
                   <XAxis dataKey="trade" className="text-xs" stroke="hsl(var(--muted-foreground))" tickLine={false} axisLine={false} />

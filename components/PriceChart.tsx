@@ -11,9 +11,12 @@ export default function PriceChart() {
   const [data, setData] = useState<{ time: string; btc: number; eth: number }[]>([]);
   const [currentBtc, setCurrentBtc] = useState<number>(0);
   const [currentEth, setCurrentEth] = useState<number>(0);
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    setLastUpdate(new Date());
     const fetchPrices = async () => {
       try {
         const [btcRes, ethRes] = await Promise.all([
@@ -97,11 +100,14 @@ export default function PriceChart() {
           </div>
         </div>
         <p className="text-[10px] text-muted-foreground text-right mt-1">
-          Atualizado há {Math.floor((new Date().getTime() - lastUpdate.getTime()) / 1000)} segundos
+          {lastUpdate ? `Atualizado há ${Math.floor((new Date().getTime() - lastUpdate.getTime()) / 1000)} segundos` : 'Aguardando atualização...'}
         </p>
       </CardHeader>
       <CardContent className="h-[350px] pt-6">
-        <ResponsiveContainer width="100%" height="100%">
+        {!mounted ? (
+          <div style={{ height: '100%', width: '100%', background: 'transparent' }} />
+        ) : (
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <LineChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: -20 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.4} />
             <XAxis dataKey="time" className="text-xs" stroke="hsl(var(--muted-foreground))" tick={{ fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
@@ -113,6 +119,7 @@ export default function PriceChart() {
             <Line yAxisId="right" type="monotone" dataKey="eth" stroke="#627EEA" strokeWidth={3} dot={false} activeDot={{ r: 6, strokeWidth: 0 }} name="Ethereum (ETH)" animationDuration={300} />
           </LineChart>
         </ResponsiveContainer>
+        )}
       </CardContent>
     </Card>
   );

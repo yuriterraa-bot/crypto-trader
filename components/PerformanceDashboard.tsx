@@ -10,9 +10,12 @@ import { format, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fn
 
 export default function PerformanceDashboard() {
   const [trades, setTrades] = useState<any[]>([]);
+  const [equityData, setEquityData] = useState<any[]>([]);
+  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setMounted(true);
     fetchTrades();
   }, []);
 
@@ -87,6 +90,8 @@ export default function PerformanceDashboard() {
 
   if (loading) return <div className="p-4 text-muted-foreground animate-pulse">Carregando métricas de performance...</div>;
 
+  if (!mounted) return null;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
@@ -116,7 +121,10 @@ export default function PerformanceDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
+            {!mounted ? (
+              <div style={{ height: '100%', width: '100%', background: 'transparent' }} />
+            ) : (
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <LineChart data={equityData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.4} />
                 <XAxis dataKey="date" className="text-xs" stroke="hsl(var(--muted-foreground))" tickLine={false} axisLine={false} />
@@ -128,6 +136,7 @@ export default function PerformanceDashboard() {
                 <Line type="monotone" dataKey="equity" stroke="#6366f1" strokeWidth={3} dot={false} fill="url(#colorEquity)" />
               </LineChart>
             </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 

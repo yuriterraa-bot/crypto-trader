@@ -77,6 +77,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body: any = await request.json();
+    console.log('Updating bot config:', JSON.stringify(body));
     
     const { data: existingRows } = await supabase
       .from('bot_config')
@@ -94,11 +95,16 @@ export async function POST(request: Request) {
       const allowedKeys = ['is_running', 'is_paper_trade', 'risk_per_trade', 'max_positions', 'strategy_config', 'timeframe', 'session_filter', 'use_mtf'];
       allowedKeys.forEach(key => {
         if (body[key] !== undefined) {
-          updatePayload[key] = body[key];
+          if (key === 'is_running' || key === 'is_paper_trade') {
+            updatePayload[key] = Boolean(body[key]);
+          } else {
+            updatePayload[key] = body[key];
+          }
         }
       });
 
-      result = await supabase.from('bot_config').update(updatePayload).eq('id', existing.id).select().limit(1);
+      result = await supabase.from('bot_config').update(updatePayload).eq('id', existing.id).select().single();
+      console.log('Update result:', JSON.stringify(result.data), 'Error:', JSON.stringify(result.error));
       
       // Fallback sem colunas novas se falhar
       if (result.error && result.error.message.includes('column')) {

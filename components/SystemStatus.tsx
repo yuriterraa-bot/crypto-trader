@@ -8,6 +8,7 @@ import { ptBR } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Power, PowerOff, Bot } from 'lucide-react';
+import BotStatusButton from './BotStatusButton';
 
 interface HealthData {
   supabase: boolean;
@@ -86,7 +87,10 @@ export default function SystemStatus() {
     }
   };
 
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
     fetchHealth();
     fetchCron();
     fetchConfig();
@@ -99,6 +103,8 @@ export default function SystemStatus() {
     
     return () => clearInterval(interval);
   }, []);
+
+  if (!mounted) return null;
 
   const StatusDot = ({ ok }: { ok: boolean }) => (
     <span className="relative flex h-2.5 w-2.5 mr-2">
@@ -157,23 +163,7 @@ export default function SystemStatus() {
           </Badge>
         )}
         
-        <Button 
-          variant={botConfig.is_running ? 'destructive' : 'default'} 
-          onClick={toggleBot}
-          disabled={loading}
-          size="sm"
-          className={`h-8 font-semibold text-xs transition-all ${botConfig.is_running ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-green-500/10 text-green-500 hover:bg-green-500/20 border border-green-500/20 shadow-[0_0_15px_rgba(34,197,94,0.2)]'}`}
-        >
-          {botConfig.is_running ? (
-            <>
-              <PowerOff className="mr-2 h-3.5 w-3.5" /> Parar Bot
-            </>
-          ) : (
-            <>
-              <Power className="mr-2 h-3.5 w-3.5" /> Iniciar Bot
-            </>
-          )}
-        </Button>
+        <BotStatusButton />
       </div>
     </div>
   );

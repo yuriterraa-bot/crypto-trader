@@ -15,9 +15,13 @@ export default function MetricCards() {
   const [balance, setBalance] = useState<number>(0);
   const [btcPrice, setBtcPrice] = useState<number>(0);
   const [ethPrice, setEthPrice] = useState<number>(0);
-  const [botConfig, setBotConfig] = useState({ is_running: false, signals_today: 0, open_positions: 0, start_time: new Date() });
+  const [botConfig, setBotConfig] = useState({ is_running: false, signals_today: 0, open_positions: 0, start_time: '' as string | Date });
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    setBotConfig(prev => ({ ...prev, start_time: new Date() }));
+
     const fetchBalance = async () => {
       try {
         const { data } = await axios.get('/api/binance/balance');
@@ -65,6 +69,8 @@ export default function MetricCards() {
 
     return () => clearInterval(interval);
   }, []);
+
+  if (!mounted) return null;
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
