@@ -150,3 +150,32 @@ export interface BacktestMetrics {
   profitFactor: number;
   totalTrades: number;
 }
+
+export type OrderType = 'MARKET' | 'LIMIT' | 'STOP_LIMIT';
+export type OrderSide = 'BUY' | 'SELL';
+export type OrderStatus = 'PENDING' | 'FILLED' | 'CANCELLED' | 'FAILED';
+
+export interface ManualOrder {
+  symbol: string;
+  side: OrderSide;
+  type: OrderType;
+  quantity: number;
+  price?: number;
+  stopPrice?: number;
+  leverage: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  status: OrderStatus;
+}
+
+export interface Position {
+  symbol: string;
+  side: string;
+  size: number;
+  entryPrice: number;
+  markPrice: number;
+  pnl: number;
+  pnlPercent: number;
+  leverage: number;
+  liquidationPrice: number;
+}

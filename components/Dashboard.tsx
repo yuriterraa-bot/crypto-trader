@@ -1,6 +1,8 @@
 'use client';
 
 import MetricCards from './MetricCards';
+import SignalPanel from './SignalPanel';
+import OrderTicket from './OrderTicket';
 import PriceChart from './PriceChart';
 import StrategyPanel from './StrategyPanel';
 import TradeHistory from './TradeHistory';
@@ -20,31 +22,41 @@ export default function Dashboard() {
         {/* Linha 1: Métricas */}
         <MetricCards />
 
-        {/* Linha 2: Gestão de Risco */}
+        {/* Linha 2: Sinais em Tempo Real (Destaque) */}
+        <div className="grid gap-6 grid-cols-1">
+          <SignalPanel />
+        </div>
+
+        {/* Linha 3: Boleta de Ordens Manual */}
+        <div className="grid gap-6 grid-cols-1">
+          <OrderTicket />
+        </div>
+
+        {/* Linha 4: Gestão de Risco */}
         <RiskManagerPanel />
 
-        {/* Linha 3: Gráfico */}
+        {/* Linha 5: Gráfico */}
         <div className="grid gap-6 grid-cols-1">
           <PriceChart />
         </div>
 
-        {/* Linha 4: Painel de Estratégias */}
+        {/* Linha 6: Painel de Estratégias */}
         <div className="grid gap-6 grid-cols-1">
           <StrategyPanel />
         </div>
 
-        {/* Linha 5: IA e Mercado */}
+        {/* Linha 7: IA e Mercado */}
         <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
           <AiSignalCard />
           <NewsPanel />
         </div>
 
-        {/* Linha 6: Log Ao Vivo */}
+        {/* Linha 8: Log Ao Vivo */}
         <div className="grid gap-6 grid-cols-1">
           <TradingLog />
         </div>
 
-        {/* Linha 7: Backtest e Histórico */}
+        {/* Linha 9: Backtest e Histórico */}
         <div className="grid gap-6 grid-cols-1 xl:grid-cols-2">
           <BacktestPanel />
           <TradeHistory />

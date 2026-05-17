@@ -139,3 +139,32 @@ export const getKlines = async (symbol: string, interval: string = '15m', limit:
     throw error;
   }
 };
+
+export const setLeverage = async (symbol: string, leverage: number) => {
+  const timestamp = Date.now();
+  const queryString = createQueryString({ symbol, leverage, timestamp });
+  const signature = generateSignature(queryString);
+
+  try {
+    const response = await api.post(`/fapi/v1/leverage?${queryString}&signature=${signature}`);
+    return response.data;
+  } catch (error) {
+    console.error('Binance API Error (setLeverage):', error);
+    throw error;
+  }
+};
+
+export const createRawOrder = async (params: Record<string, any>) => {
+  const timestamp = Date.now();
+  const allParams = { ...params, timestamp };
+  const queryString = createQueryString(allParams);
+  const signature = generateSignature(queryString);
+
+  try {
+    const response = await api.post(`/fapi/v1/order?${queryString}&signature=${signature}`);
+    return response.data;
+  } catch (error) {
+    console.error('Binance API Error (createRawOrder):', error);
+    throw error;
+  }
+};
