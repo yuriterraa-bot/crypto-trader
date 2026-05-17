@@ -30,50 +30,15 @@ export async function GET() {
     const { data: configRows, error } = await supabase
       .from('bot_config')
       .select('*')
-      .order('updated_at', { ascending: false })
-      .limit(1);
+      .order('updated_at', { ascending: false });
 
     if (error) {
       console.warn('[GET /api/bot/config] Supabase error:', error.message);
     }
 
-    const data = (configRows && configRows.length > 0) ? configRows[0] : null;
-
-    if (!data) {
-      // Faz insert do default se não existe nenhum registro
-      const { data: insertedRows, error: insertError } = await supabase
-        .from('bot_config')
-        .insert([DEFAULT_CONFIG])
-        .select()
-        .limit(1);
-        
-      if (!insertError && insertedRows && insertedRows.length > 0) return NextResponse.json(insertedRows[0]);
-      return NextResponse.json(DEFAULT_CONFIG);
-    }
-
-    // Se existe mas strategy_config está vazio
-    if (!data.strategy_config || Object.keys(data.strategy_config).length === 0) {
-      data.strategy_config = DEFAULT_CONFIG.strategy_config;
-      const { data: updatedRows, error: updateError } = await supabase
-        .from('bot_config')
-        .update({ strategy_config: DEFAULT_CONFIG.strategy_config })
-        .eq('id', data.id)
-        .select()
-        .limit(1);
-        
-      if (!updateError && updatedRows && updatedRows.length > 0) {
-        updatedRows[0].timeframe = updatedRows[0].timeframe || '15m';
-        return NextResponse.json(updatedRows[0]);
-      }
-      data.timeframe = data.timeframe || '15m';
-      return NextResponse.json(data);
-    }
-
-    data.timeframe = data.timeframe || '15m';
-    return NextResponse.json(data);
+    return NextResponse.json({ debug: true, rows: configRows || [], error });
   } catch (error: any) {
-    console.error('[GET /api/bot/config] Error:', error);
-    return NextResponse.json(DEFAULT_CONFIG);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
