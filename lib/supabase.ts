@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder_key';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
@@ -98,6 +98,18 @@ CREATE TABLE cron_logs (
 ALTER TABLE cron_logs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all for service role" ON cron_logs
   USING (true) WITH CHECK (true);
+
+ALTER TABLE bot_config 
+ADD COLUMN IF NOT EXISTS timeframe TEXT DEFAULT '15m',
+ADD COLUMN IF NOT EXISTS use_mtf BOOLEAN DEFAULT true,
+ADD COLUMN IF NOT EXISTS session_filter JSONB DEFAULT '{"asia":true,"london":true,"ny":true}'::jsonb,
+ADD COLUMN IF NOT EXISTS trailing_stop_percent DECIMAL DEFAULT 1.0,
+ADD COLUMN IF NOT EXISTS use_trailing_stop BOOLEAN DEFAULT false,
+ADD COLUMN IF NOT EXISTS use_break_even BOOLEAN DEFAULT true,
+ADD COLUMN IF NOT EXISTS break_even_rr DECIMAL DEFAULT 1.0,
+ADD COLUMN IF NOT EXISTS daily_loss_limit_percent DECIMAL DEFAULT 5.0,
+ADD COLUMN IF NOT EXISTS partial_close_levels JSONB DEFAULT '[{"rr":1,"percent":30},{"rr":2,"percent":40}]'::jsonb;
+
 
 ALTER TABLE ai_analysis ENABLE ROW LEVEL SECURITY;  
 CREATE POLICY "Allow all for service role" ON ai_analysis

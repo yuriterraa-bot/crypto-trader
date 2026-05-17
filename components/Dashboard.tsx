@@ -12,6 +12,8 @@ import AiSignalCard from './AiSignalCard';
 import SystemStatus from './SystemStatus';
 import TradingLog from './TradingLog';
 import RiskManagerPanel from './RiskManagerPanel';
+import TimeframeSelector from './TimeframeSelector';
+import PerformanceDashboard from './PerformanceDashboard';
 
 export default function Dashboard() {
   return (
@@ -19,12 +21,19 @@ export default function Dashboard() {
       <SystemStatus />
       
       <div className="flex-1 space-y-6 p-4 md:p-6 lg:p-8 w-full max-w-[1600px] mx-auto">
+        <TimeframeSelector />
+
         {/* Linha 1: Métricas */}
         <MetricCards />
 
         {/* Linha 2: Sinais em Tempo Real (Destaque) */}
         <div className="grid gap-6 grid-cols-1">
           <SignalPanel />
+        </div>
+
+        {/* Linha Nova: Performance Analytics */}
+        <div className="grid gap-6 grid-cols-1 pt-4 pb-2">
+          <PerformanceDashboard />
         </div>
 
         {/* Linha 3: Boleta de Ordens Manual */}
@@ -65,5 +74,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-

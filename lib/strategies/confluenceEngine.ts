@@ -6,7 +6,12 @@ import { calculateSMC } from '../indicators/smc';
 import { calculateSMA, calculateEMA } from '../indicators/movingAverage';
 import { calculateStochastic } from '../indicators/stochastic';
 
-export const runConfluenceEngine = (candles: Candle[], config: StrategyConfig) => {
+export const runConfluenceEngine = (
+  candles: Candle[], 
+  config: StrategyConfig, 
+  mtfAlignment: string = 'MIXED',
+  sessionMultiplier: number = 1.0
+) => {
   let score = 0;
   const breakdown: { indicator: string; contribution: number; signal: string }[] = [];
 
@@ -127,6 +132,20 @@ export const runConfluenceEngine = (candles: Candle[], config: StrategyConfig) =
     }
   }
 
+  // 7. Multi-Timeframe (MTF) Alignment
+  if (config.indicators.mtf?.active) {
+    const weight = config.indicators.mtf.weight;
+    if (mtfAlignment === 'BULLISH') {
+      score += weight;
+      breakdown.push({ indicator: 'MTF Trend', contribution: weight, signal: 'BUY (Aligned)' });
+    } else if (mtfAlignment === 'BEARISH') {
+      score -= weight;
+      breakdown.push({ indicator: 'MTF Trend', contribution: -weight, signal: 'SELL (Aligned)' });
+    } else {
+      breakdown.push({ indicator: 'MTF Trend', contribution: 0, signal: 'NEUTRAL (Mixed)' });
+    }
+  }
+
   // Normalize score to -100 to +100
   // Max possible score is sum of all active weights
   let maxPossible = 0;
@@ -135,13 +154,15 @@ export const runConfluenceEngine = (candles: Candle[], config: StrategyConfig) =
   });
 
   // To prevent division by zero and cap at 100/-100
-  const normalizedScore = maxPossible > 0 ? Math.max(-100, Math.min(100, (score / maxPossible) * 100)) : 0;
+  let normalizedScore = maxPossible > 0 ? Math.max(-100, Math.min(100, (score / maxPossible) * 100)) : 0;
+
+  // Apply Session Multiplier
+  normalizedScore = Math.max(-100, Math.min(100, normalizedScore * sessionMultiplier));
 
   let finalSignal: 'BUY' | 'SELL' | 'NEUTRAL' = 'NEUTRAL';
   if (normalizedScore >= config.thresholds.buy) {
     finalSignal = 'BUY';
   } else if (normalizedScore <= -config.thresholds.sell) {
-    // Note: If user sets threshold_sell to 60, we check if score <= -60
     finalSignal = 'SELL';
   }
 

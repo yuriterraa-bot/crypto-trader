@@ -23,6 +23,7 @@ export default function BacktestPanel() {
   const [metrics, setMetrics] = useState<BacktestMetrics | null>(null);
   const [equityData, setEquityData] = useState<{trade: number, balance: number}[]>([]);
   const [history, setHistory] = useState<any[]>([]);
+  const [topConfigs, setTopConfigs] = useState<any[]>([]);
 
   const fetchHistory = async () => {
     try {
@@ -115,13 +116,48 @@ export default function BacktestPanel() {
             <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Banca Inicial ($)</Label>
             <Input type="number" value={initialBalance} onChange={(e) => setInitialBalance(parseFloat(e.target.value))} className="bg-background border-border" />
           </div>
-          <div className="flex items-end">
+          <div className="flex flex-col space-y-2 justify-end">
             <Button onClick={runBacktest} disabled={loading} className="w-full bg-primary hover:bg-primary/90 text-white font-bold h-10 transition-all shadow-[0_0_15px_rgba(99,102,241,0.2)] hover:shadow-[0_0_20px_rgba(99,102,241,0.4)]">
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
-              {loading ? 'Simulando...' : 'Executar Backtest'}
+              {loading && !metrics ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+              {loading && !metrics ? 'Simulando...' : 'Executar Backtest'}
+            </Button>
+          </div>
+          <div className="flex flex-col space-y-2 justify-end">
+            <Button onClick={async () => {
+              setLoading(true);
+              setTopConfigs([]);
+              try {
+                const res = await axios.post('/api/optimize', { symbol, lookbackDays: days });
+                setTopConfigs(res.data.topConfigs);
+              } catch (e) {
+                alert('Erro ao otimizar');
+              } finally {
+                setLoading(false);
+              }
+            }} disabled={loading} variant="outline" className="w-full h-10 border-primary text-primary hover:bg-primary/10">
+              {loading && topConfigs.length === 0 ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TrendingUp className="mr-2 h-4 w-4" />}
+              {loading && topConfigs.length === 0 ? 'Otimizando...' : 'Auto-Otimizar'}
             </Button>
           </div>
         </div>
+
+        {topConfigs.length > 0 && (
+          <div className="mb-8 p-4 bg-primary/5 border border-primary/20 rounded-xl">
+            <h3 className="font-bold mb-4 text-primary">Top 5 Configurações Encontradas</h3>
+            <div className="space-y-2">
+              {topConfigs.map((cfg: any, i: number) => (
+                <div key={i} className="flex justify-between items-center p-2 bg-background border rounded">
+                  <div className="text-xs font-mono">
+                    WinRate: {cfg.metrics.winRate.toFixed(1)}% | Sharpe: {cfg.metrics.sharpeRatio.toFixed(2)} | TF: {cfg.config.t} | Buy: {cfg.config.buy}
+                  </div>
+                  <Button size="sm" variant="secondary" onClick={() => alert('Para aplicar, altere os parâmetros manualmente no Painel de Estratégias')}>
+                    Aplicar
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {metrics && (
           <div className="space-y-8 mb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">

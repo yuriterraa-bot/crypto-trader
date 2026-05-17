@@ -205,6 +205,39 @@ export default function StrategyPanel() {
           </div>
         </div>
 
+        {/* Filtro de Sessão de Mercado */}
+        <div className="pt-6 border-t border-border/50">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-6 flex items-center">
+            <Compass className="h-4 w-4 mr-2" /> Filtro de Sessão de Mercado
+          </h3>
+          <div className="bg-secondary/10 p-5 rounded-xl border border-border/50">
+            <div className="flex flex-col sm:flex-row gap-6 items-center">
+              <p className="text-xs text-muted-foreground flex-1">
+                Selecione em quais sessões do mercado o bot está autorizado a operar.
+              </p>
+              <div className="flex space-x-4">
+                {['asia', 'london', 'ny'].map((session) => (
+                  <label key={session} className="flex items-center space-x-2 cursor-pointer bg-background px-3 py-2 rounded-lg border border-border">
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-border text-primary focus:ring-primary"
+                      checked={(config as any)?.session_filter?.[session] ?? true}
+                      onChange={(e) => setConfig((prev: any) => ({
+                        ...prev,
+                        session_filter: {
+                          ...(prev?.session_filter || { asia: true, london: true, ny: true }),
+                          [session]: e.target.checked
+                        }
+                      }))}
+                    />
+                    <span className="text-sm font-bold uppercase">{session === 'ny' ? 'Nova York' : session}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
       </CardContent>
       <CardFooter className="flex justify-end border-t border-border/50 p-4 bg-secondary/10">
         <Button onClick={saveConfig} disabled={saving} className="bg-primary hover:bg-primary/90 text-white font-bold">

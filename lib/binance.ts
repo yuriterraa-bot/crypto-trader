@@ -123,7 +123,7 @@ export const cancelOrder = async (symbol: string, orderId: number) => {
   }
 };
 
-export const getKlines = async (symbol: string, interval: string = '15m', limit: number = 200) => {
+export const fetchCandles = async (symbol: string, interval: string = '15m', limit: number = 200) => {
   try {
     const response = await api.get(`/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
     return response.data.map((k: any) => ({
@@ -135,10 +135,12 @@ export const getKlines = async (symbol: string, interval: string = '15m', limit:
       volume: parseFloat(k[5]),
     }));
   } catch (error) {
-    console.error('Binance API Error (getKlines):', error);
+    console.error('Binance API Error (fetchCandles):', error);
     throw error;
   }
 };
+
+export const getKlines = fetchCandles; // Keep compatibility
 
 export const setLeverage = async (symbol: string, leverage: number) => {
   const timestamp = Date.now();

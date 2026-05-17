@@ -73,3 +73,54 @@ export const calculateRisk = (
     riskAmount
   };
 };
+
+export const trailingStop = (originalSL: number, currentPrice: number, side: 'BUY' | 'SELL', trailPercent: number) => {
+  const pct = trailPercent / 100;
+  if (side === 'BUY') {
+    const trailingLevel = currentPrice * (1 - pct);
+    return Math.max(originalSL, trailingLevel);
+  } else {
+    const trailingLevel = currentPrice * (1 + pct);
+    return Math.min(originalSL, trailingLevel);
+  }
+};
+
+export const breakEven = (entryPrice: number, currentPrice: number, side: 'BUY' | 'SELL', triggerRR: number, stopLossPrice: number) => {
+  const riskAmount = Math.abs(entryPrice - stopLossPrice);
+  
+  if (side === 'BUY') {
+    if (currentPrice >= entryPrice + (riskAmount * triggerRR)) {
+      return entryPrice; // Move SL to entry
+    }
+  } else {
+    if (currentPrice <= entryPrice - (riskAmount * triggerRR)) {
+      return entryPrice; // Move SL to entry
+    }
+  }
+  return stopLossPrice; // Don't move
+};
+
+export const partialClose = (positionSize: number, levels: { rr: number, percent: number }[], currentRR: number) => {
+  // Find highest level crossed
+  const passedLevels = levels.filter(l => currentRR >= l.rr).sort((a, b) => b.rr - a.rr);
+  
+  if (passedLevels.length > 0) {
+    const targetLevel = passedLevels[0];
+    return { 
+      closeNow: true, 
+      percentToClose: targetLevel.percent 
+    };
+  }
+  return { closeNow: false, percentToClose: 0 };
+};
+
+export const dailyLossLimit = (todayPnl: number, accountBalance: number, limitPercent: number) => {
+  const todayPnlPercent = (todayPnl / accountBalance) * 100;
+  // If pnl is negative and exceeds limit
+  const shouldStop = todayPnlPercent <= -limitPercent;
+  
+  return {
+    shouldStop,
+    todayPnlPercent
+  };
+};
