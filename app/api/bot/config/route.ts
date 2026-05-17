@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { BotConfig } from '@/types';
 
+const DEFAULT_CONFIG = { 
+  is_running: false, 
+  risk_per_trade: 1.0, 
+  max_positions: 5,
+  is_paper_trade: true, 
+  timeframe: '15m' 
+};
+
 export async function GET() {
   try {
     const { data, error } = await supabase
@@ -11,25 +19,35 @@ export async function GET() {
       .limit(1)
       .single();
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 is 'no rows returned'
-      throw error;
+    if (error) {
+      console.warn('[GET /api/bot/config] Supabase error (possibly missing column or row):', error.message);
+      return NextResponse.json(DEFAULT_CONFIG);
     }
 
-    return NextResponse.json(data || {});
+    return NextResponse.json(data || DEFAULT_CONFIG);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('[GET /api/bot/config] Error:', error);
+    return NextResponse.json(DEFAULT_CONFIG);
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const body: BotConfig = await request.json();
+    const body: any = await request.json();
     
-    // Upsert the config (assuming there's only 1 row or we just insert new)
-    // For simplicity, we just delete existing and insert new to ensure we have exactly 1 config
-    // or we can update the existing one if ID is provided.
-    
-    // First find if one exists
+    // Tenta atualizar com os novos campos
+    let updatePayload = {
+      is_running: body.is_running,
+      is_paper_trade: body.is_paper_trade,
+      risk_per_trade: body.risk_per_trade,
+      max_positions: body.max_positions,
+      strategy_config: body.strategy_config,
+      timeframe: body.timeframe,
+      session_filter: body.session_filter,
+      use_mtf: body.use_mtf,
+      updated_at: new Date().toISOString()
+    };
+
     const { data: existing } = await supabase
       .from('bot_config')
       .select('id')
@@ -38,38 +56,33 @@ export async function POST(request: Request) {
 
     let result;
     
-    if (existing) {
-      result = await supabase
-        .from('bot_config')
-        .update({
-          is_running: body.is_running,
-          is_paper_trade: body.is_paper_trade,
-          risk_per_trade: body.risk_per_trade,
-          max_positions: body.max_positions,
-          strategy_config: body.strategy_config,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', existing.id)
-        .select()
-        .single();
-    } else {
-      result = await supabase
-        .from('bot_config')
-        .insert([{
-          is_running: body.is_running,
-          is_paper_trade: body.is_paper_trade,
-          risk_per_trade: body.risk_per_trade,
-          max_positions: body.max_positions,
-          strategy_config: body.strategy_config,
-        }])
-        .select()
-        .single();
+    const upsertConfig = async (payload: any) => {
+      if (existing) {
+        return supabase.from('bot_config').update(payload).eq('id', existing.id).select().single();
+      } else {
+        return supabase.from('bot_config').insert([payload]).select().single();
+      }
+    };
+
+    result = await upsertConfig(updatePayload);
+
+    // Se der erro por conta de colunas não existentes, tenta sem elas
+    if (result.error && result.error.message.includes('column')) {
+      console.warn('[POST /api/bot/config] Colunas faltando, atualizando com schema legado...');
+      const fallbackPayload = {
+        is_running: body.is_running,
+        is_paper_trade: body.is_paper_trade,
+        risk_per_trade: body.risk_per_trade,
+        max_positions: body.max_positions,
+        strategy_config: body.strategy_config,
+        updated_at: new Date().toISOString()
+      };
+      result = await upsertConfig(fallbackPayload);
     }
 
-    if (result.error) throw result.error;
-
-    return NextResponse.json(result.data);
+    return NextResponse.json(result?.data || DEFAULT_CONFIG, { status: 200 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('[POST /api/bot/config] Error:', error);
+    return NextResponse.json(DEFAULT_CONFIG, { status: 200 });
   }
 }

@@ -80,9 +80,10 @@ export default function OrderTicket() {
 
       // 4. Get Positions
       const posRes = await axios.get(`/api/orders?symbol=${symbol}`);
-      if (posRes.data && posRes.data.success) {
-        setPositions(posRes.data.data);
-      }
+      const posData = posRes.data;
+      const validPositions = Array.isArray(posData) ? posData : 
+        (posData?.data ? posData.data : (posData?.positions ? posData.positions : []));
+      setPositions(validPositions);
     } catch (e) {
       console.error('Error fetching order ticket data', e);
     }
@@ -111,10 +112,18 @@ export default function OrderTicket() {
   const calcQty = () => {
     const realSize = calcRealSize();
     const px = orderType === 'MARKET' ? currentPrice : (parseFloat(limitPrice) || currentPrice);
-    if (px > 0) {
-      return (realSize / px).toFixed(5);
+    if (px > 0 && realSize > 0) {
+      let qty = realSize / px;
+      if (symbol.includes('BTC')) {
+        qty = parseFloat(qty.toFixed(3));
+        if (qty < 0.001) qty = 0.001;
+      } else if (symbol.includes('ETH')) {
+        qty = parseFloat(qty.toFixed(2));
+        if (qty < 0.01) qty = 0.01;
+      }
+      return qty.toString();
     }
-    return '0.00000';
+    return symbol.includes('BTC') ? '0.001' : '0.01';
   };
 
   const getEstSlPrice = () => {
@@ -140,11 +149,12 @@ export default function OrderTicket() {
   const executeOrder = async () => {
     setLoading(true);
     try {
+      // Backend espera quantity em USDT (tamanho real alavancado)
       const payload: any = {
         symbol,
         side,
         type: orderType,
-        quantity: parseFloat(calcQty()),
+        quantity: calcRealSize(),
         leverage,
       };
 
