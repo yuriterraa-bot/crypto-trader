@@ -23,9 +23,12 @@ export default function TimeframeSelector() {
       const { data: configRows, error } = await supabase.from('bot_config').select('timeframe').limit(1);
       if (!error && configRows && configRows.length > 0 && configRows[0].timeframe) {
         setActiveTf(configRows[0].timeframe);
+      } else {
+        setActiveTf('15m');
       }
     } catch (e) {
       console.error(e);
+      setActiveTf('15m');
     } finally {
       setLoading(false);
     }

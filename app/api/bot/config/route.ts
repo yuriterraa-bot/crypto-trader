@@ -50,6 +50,7 @@ export async function GET() {
 
     // Se existe mas strategy_config está vazio
     if (!data.strategy_config || Object.keys(data.strategy_config).length === 0) {
+      data.strategy_config = DEFAULT_CONFIG.strategy_config;
       const { data: updatedRows, error: updateError } = await supabase
         .from('bot_config')
         .update({ strategy_config: DEFAULT_CONFIG.strategy_config })
@@ -57,10 +58,15 @@ export async function GET() {
         .select()
         .limit(1);
         
-      if (!updateError && updatedRows && updatedRows.length > 0) return NextResponse.json(updatedRows[0]);
-      return NextResponse.json({ ...data, strategy_config: DEFAULT_CONFIG.strategy_config });
+      if (!updateError && updatedRows && updatedRows.length > 0) {
+        updatedRows[0].timeframe = updatedRows[0].timeframe || '15m';
+        return NextResponse.json(updatedRows[0]);
+      }
+      data.timeframe = data.timeframe || '15m';
+      return NextResponse.json(data);
     }
 
+    data.timeframe = data.timeframe || '15m';
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('[GET /api/bot/config] Error:', error);
