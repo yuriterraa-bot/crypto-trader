@@ -88,6 +88,7 @@ export async function POST(request: Request) {
       .limit(1);
 
     const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
+    console.log('Existing config:', JSON.stringify(existing));
 
     let result;
 
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
       });
 
       result = await supabase.from('bot_config').update(updatePayload).eq('id', existing.id).select().single();
-      console.log('Update result:', JSON.stringify(result.data), 'Error:', JSON.stringify(result.error));
+      console.log('Update payload:', JSON.stringify(updatePayload));
       
       // Fallback sem colunas novas se falhar
       if (result.error && result.error.message.includes('column')) {
@@ -121,6 +122,8 @@ export async function POST(request: Request) {
       const insertPayload = { ...DEFAULT_CONFIG, ...body };
       result = await supabase.from('bot_config').insert([insertPayload]).select().limit(1);
     }
+    
+    console.log('Final Supabase Result Data:', JSON.stringify(result.data), 'Error:', JSON.stringify(result.error));
 
     const returnData = result?.data ? (Array.isArray(result.data) ? result.data[0] : result.data) : { ...existing, ...body };
     return NextResponse.json(returnData, { status: 200 });
