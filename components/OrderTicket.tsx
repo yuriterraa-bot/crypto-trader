@@ -63,8 +63,9 @@ export default function OrderTicket() {
     try {
       // 1. Get Balance
       const balRes = await axios.get('/api/binance/balance');
-      const usdt = balRes.data.find((b: any) => b.asset === 'USDT');
-      if (usdt) setBalance(parseFloat(usdt.availableBalance));
+      const balData = balRes.data;
+      const balVal = balData.balance || balData.data?.balance || balData.total || balData.availableBalance || '0';
+      setBalance(parseFloat(balVal));
 
       // 2. Get Price
       const priceRes = await axios.get(`/api/binance/price?symbol=${symbol}`);

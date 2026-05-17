@@ -21,7 +21,9 @@ export default function MetricCards() {
     const fetchBalance = async () => {
       try {
         const { data } = await axios.get('/api/binance/balance');
-        setBalance(Number(data.USDT) || 0);
+        // Tentar todos os formatos possíveis
+        const bal = data.balance || data.data?.balance || data.total || data.availableBalance || '0';
+        setBalance(parseFloat(bal));
       } catch (e) {
         setBalance(5000); // Mock for preview if offline
       }
