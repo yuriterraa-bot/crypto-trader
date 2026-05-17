@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import axios from 'axios';
 
-export async function GET() {
+export async function GET(request: Request) {
   let supabaseOk = false;
   let binanceOk = false;
 
@@ -17,10 +17,9 @@ export async function GET() {
     }
 
     // 2. Test Binance
-    const isTestnet = process.env.BINANCE_TESTNET === 'true';
-    const baseUrl = isTestnet ? 'https://demo-fapi.binance.com' : 'https://fapi.binance.com';
-    const res = await axios.get(`${baseUrl}/fapi/v1/ticker/price?symbol=BTCUSDT`, { timeout: 5000 });
-    if (res.data && res.data.price) {
+    const url = new URL('/api/binance/price?symbol=BTCUSDT', request.url);
+    const res = await axios.get(url.toString(), { timeout: 3000 });
+    if (res.status === 200) {
       binanceOk = true;
     }
   } catch (error) {
