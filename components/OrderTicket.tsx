@@ -7,15 +7,25 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Loader2, TrendingUp, TrendingDown, AlertTriangle, ShieldAlert, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
-import { useToast } from "@/hooks/use-toast";
+
+// Custom Simple Tabs Component to replace shadcn Tabs
+const SimpleTabs = ({ value, onChange, options }: { value: string, onChange: (val: string) => void, options: { value: string, label: string }[] }) => (
+  <div className="w-full flex p-1 bg-secondary rounded-lg">
+    {options.map(opt => (
+      <button
+        key={opt.value}
+        onClick={() => onChange(opt.value)}
+        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${value === opt.value ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+      >
+        {opt.label}
+      </button>
+    ))}
+  </div>
+);
 
 export default function OrderTicket() {
-  const { toast } = useToast();
-  
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [currentPrice, setCurrentPrice] = useState(0);
   const [orderType, setOrderType] = useState('MARKET');
@@ -78,8 +88,8 @@ export default function OrderTicket() {
     }
   };
 
-  const handleSizePercentChange = (val: number[]) => {
-    const pct = val[0];
+  const handleSizePercentChange = (val: number) => {
+    const pct = val;
     setSizePercent(pct);
     if (balance > 0) {
       const amount = (balance * (pct / 100)).toFixed(2);
@@ -151,23 +161,14 @@ export default function OrderTicket() {
       const res = await axios.post('/api/orders', payload);
       
       if (res.data.success) {
-        toast({
-          title: "Sucesso!",
-          description: `Ordem enviada. ID: ${res.data.orderId}`,
-          variant: "default",
-          className: "bg-green-600 text-white border-none"
-        });
+        alert(`Ordem enviada com sucesso! ID: ${res.data.orderId}`);
         setConfirmModal(false);
         fetchData();
       } else {
         throw new Error(res.data.error || 'Erro desconhecido');
       }
     } catch (error: any) {
-      toast({
-        title: "Erro ao criar ordem",
-        description: error.response?.data?.error || error.message,
-        variant: "destructive"
-      });
+      alert(error.response?.data?.error || error.message);
     } finally {
       setLoading(false);
     }
@@ -177,13 +178,13 @@ export default function OrderTicket() {
     try {
       const res = await axios.post('/api/orders/close', { symbol: posSymbol, positionSide: posSide });
       if (res.data.success) {
-        toast({ title: "Sucesso", description: "Posição fechada com sucesso!" });
+        alert("Posição fechada com sucesso!");
         fetchData();
       } else {
         throw new Error(res.data.error);
       }
     } catch (e: any) {
-      toast({ title: "Erro ao fechar", description: e.message, variant: "destructive" });
+      alert(e.message);
     }
   };
 
@@ -196,7 +197,7 @@ export default function OrderTicket() {
           <div className="flex justify-between items-center">
             <div>
               <CardTitle className="flex items-center text-xl">
-                Boleta de Ordens <Badge className="ml-3 bg-orange-500/20 text-orange-500 border-0">🧪 Demo</Badge>
+                Boleta de Ordens <span className="ml-3 bg-orange-500/20 text-orange-500 text-xs px-2 py-1 rounded-full border-0">🧪 Demo</span>
               </CardTitle>
               <CardDescription>Execução manual na Binance Testnet</CardDescription>
             </div>
@@ -224,13 +225,15 @@ export default function OrderTicket() {
             </div>
             <div className="space-y-3">
               <Label className="text-xs font-bold text-muted-foreground uppercase">Tipo de Ordem</Label>
-              <Tabs value={orderType} onValueChange={setOrderType} className="w-full">
-                <TabsList className="w-full h-12 grid grid-cols-3">
-                  <TabsTrigger value="MARKET" className="font-bold">Mercado</TabsTrigger>
-                  <TabsTrigger value="LIMIT" className="font-bold">Limitada</TabsTrigger>
-                  <TabsTrigger value="STOP_LIMIT" className="font-bold">Stop Limit</TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <SimpleTabs 
+                value={orderType} 
+                onChange={setOrderType} 
+                options={[
+                  {value: 'MARKET', label: 'Mercado'},
+                  {value: 'LIMIT', label: 'Limitada'},
+                  {value: 'STOP_LIMIT', label: 'Stop Limit'},
+                ]} 
+              />
             </div>
           </div>
 
@@ -275,7 +278,15 @@ export default function OrderTicket() {
                 <Label className="text-xs font-bold text-muted-foreground uppercase">Alavancagem</Label>
                 <span className="text-2xl font-black">{leverage}x</span>
               </div>
-              <Slider min={1} max={125} step={1} value={[leverage]} onValueChange={(v) => setLeverage(v[0])} className="py-2" />
+              <input 
+                type="range" 
+                min={1} 
+                max={125} 
+                step={1} 
+                value={leverage} 
+                onChange={(e) => setLeverage(parseInt(e.target.value))} 
+                className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary" 
+              />
               {getLeverageWarning() && (
                 <p className={`text-xs font-bold flex items-center ${getLeverageWarning()?.color}`}>
                   <AlertTriangle className="w-3.5 h-3.5 mr-1" /> {getLeverageWarning()?.text}
@@ -293,7 +304,15 @@ export default function OrderTicket() {
               </div>
               <div className="flex items-center space-x-4">
                 <span className="text-xs font-bold w-12">{sizePercent.toFixed(0)}%</span>
-                <Slider min={0} max={100} step={1} value={[sizePercent]} onValueChange={handleSizePercentChange} className="flex-1" />
+                <input 
+                  type="range" 
+                  min={0} 
+                  max={100} 
+                  step={1} 
+                  value={sizePercent} 
+                  onChange={(e) => handleSizePercentChange(parseFloat(e.target.value))} 
+                  className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary" 
+                />
               </div>
               <div className="flex justify-between text-sm font-mono bg-background p-3 rounded border border-border">
                 <span className="text-muted-foreground">Posição Real ({leverage}x):</span>
@@ -315,12 +334,11 @@ export default function OrderTicket() {
               </div>
               {slEnabled && (
                 <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
-                  <Tabs value={slType} onValueChange={setSlType} className="w-full">
-                    <TabsList className="w-full h-8 grid grid-cols-2">
-                      <TabsTrigger value="PRICE" className="text-xs">Preço</TabsTrigger>
-                      <TabsTrigger value="PERCENT" className="text-xs">%</TabsTrigger>
-                    </TabsList>
-                  </Tabs>
+                  <SimpleTabs 
+                    value={slType} 
+                    onChange={setSlType} 
+                    options={[{value: 'PRICE', label: 'Preço'}, {value: 'PERCENT', label: '%'}]} 
+                  />
                   <Input type="number" placeholder={slType === 'PRICE' ? 'Ex: 60000' : 'Ex: 2'} value={slValue} onChange={e => setSlValue(e.target.value)} className="font-mono" />
                   {getEstSlPrice() && (
                     <p className="text-xs font-mono text-red-400">Est. Price: ${getEstSlPrice()?.toFixed(2)}</p>
@@ -340,12 +358,11 @@ export default function OrderTicket() {
               </div>
               {tpEnabled && (
                 <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
-                  <Tabs value={tpType} onValueChange={setTpType} className="w-full">
-                    <TabsList className="w-full h-8 grid grid-cols-2">
-                      <TabsTrigger value="PRICE" className="text-xs">Preço</TabsTrigger>
-                      <TabsTrigger value="PERCENT" className="text-xs">%</TabsTrigger>
-                    </TabsList>
-                  </Tabs>
+                  <SimpleTabs 
+                    value={tpType} 
+                    onChange={setTpType} 
+                    options={[{value: 'PRICE', label: 'Preço'}, {value: 'PERCENT', label: '%'}]} 
+                  />
                   <Input type="number" placeholder={tpType === 'PRICE' ? 'Ex: 80000' : 'Ex: 5'} value={tpValue} onChange={e => setTpValue(e.target.value)} className="font-mono" />
                   {getEstTpPrice() && (
                     <p className="text-xs font-mono text-green-400">Est. Price: ${getEstTpPrice()?.toFixed(2)}</p>
@@ -380,9 +397,9 @@ export default function OrderTicket() {
               <div className="p-5 border-b border-border/50 bg-secondary/5">
                 <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2 font-bold">Sinal Atual</div>
                 <div className="flex items-center justify-between">
-                  <Badge className={`text-sm py-1 px-3 ${signal.combined.recommendation.includes('BUY') ? 'bg-green-500 hover:bg-green-600' : signal.combined.recommendation.includes('SELL') ? 'bg-red-500 hover:bg-red-600' : 'bg-gray-500 hover:bg-gray-600'}`}>
+                  <span className={`text-sm py-1 px-3 rounded-full text-white font-bold ${signal.combined.recommendation.includes('BUY') ? 'bg-green-500' : signal.combined.recommendation.includes('SELL') ? 'bg-red-500' : 'bg-gray-500'}`}>
                     {signal.combined.recommendation}
-                  </Badge>
+                  </span>
                   <span className="font-mono font-bold text-lg">{signal.combined.score > 0 ? '+' : ''}{signal.combined.score.toFixed(1)}</span>
                 </div>
               </div>
@@ -420,9 +437,9 @@ export default function OrderTicket() {
                     return (
                       <div key={i} className="bg-background border border-border p-3 rounded-lg flex flex-col space-y-2">
                         <div className="flex justify-between items-center">
-                          <Badge variant="outline" className={isLong ? 'text-green-500 border-green-500' : 'text-red-500 border-red-500'}>
+                          <span className={`text-xs px-2 py-0.5 rounded-full border font-bold ${isLong ? 'text-green-500 border-green-500/50 bg-green-500/10' : 'text-red-500 border-red-500/50 bg-red-500/10'}`}>
                             {isLong ? 'LONG' : 'SHORT'}
-                          </Badge>
+                          </span>
                           <span className={`font-mono font-bold ${pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                             {pnl > 0 ? '+' : ''}{pnl.toFixed(2)} USDT
                           </span>

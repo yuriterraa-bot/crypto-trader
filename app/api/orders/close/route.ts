@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { createRawOrder, getPositions } from '@/lib/binance';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 
 export async function POST(request: Request) {
   try {
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 
     // 3. Save to Supabase trades
     await supabase.from('trades').insert({
-      id: uuidv4(),
+      id: crypto.randomUUID(),
       symbol,
       side,
       quantity,
