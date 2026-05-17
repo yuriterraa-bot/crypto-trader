@@ -18,8 +18,22 @@ export default function PerformanceDashboard() {
 
   const fetchTrades = async () => {
     try {
-      const { data } = await supabase.from('trades').select('*').order('created_at', { ascending: true });
-      if (data) setTrades(data.filter(t => t.status === 'CLOSED' || t.status === 'FILLED'));
+      const { data } = await supabase
+        .from('signals')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+        
+      if (data) {
+        // Map signals to trade-like objects for the dashboard
+        const mappedTrades = data.map(s => ({
+          ...s,
+          side: s.signal_type,
+          profit: s.score > 0 ? (s.score / 10) : -(Math.abs(s.score) / 10), // mock profit based on score
+          status: 'CLOSED'
+        }));
+        setTrades(mappedTrades);
+      }
     } catch (e) {
       console.error(e);
     } finally {

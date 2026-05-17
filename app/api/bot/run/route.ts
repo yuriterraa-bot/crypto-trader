@@ -247,6 +247,16 @@ export async function POST(request: Request) {
           };
 
           await supabase.from('signals').insert([signalToSave]);
+          
+          await supabase.from('trades').insert([{
+            symbol,
+            side: finalRecommendation === 'BUY' ? 'BUY' : 'SELL',
+            quantity: riskResult?.positionSize || 0,
+            price: klines[klines.length - 1].close,
+            status: config.is_paper_trade ? 'PAPER' : 'FILLED',
+            strategy_id: null,
+            created_at: new Date().toISOString()
+          }]);
         }
       }
 

@@ -86,7 +86,7 @@ export default function SystemStatus() {
       fetchHealth();
       fetchCron();
       fetchConfig();
-    }, 60000);
+    }, 30000);
     
     return () => clearInterval(interval);
   }, []);
