@@ -46,32 +46,41 @@ export default function SystemStatus() {
 
   const fetchConfig = async () => {
     try {
-      const { data } = await axios.get('/api/bot/config');
+      const res = await fetch('/api/bot/config', { cache: 'no-store' });
+      const data = await res.json();
       if (data) {
         setBotConfig({
-          is_running: data.is_running,
+          is_running: data.is_running === true,
           is_paper_trade: data.is_paper_trade
         });
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Status fetch error:', e);
+    }
   };
 
   const toggleBot = async () => {
-    setLoading(true);
     try {
+      setLoading(true);
       const newState = !botConfig.is_running;
-      await axios.post('/api/bot/config', { is_running: newState });
-      setBotConfig(prev => ({ ...prev, is_running: newState }));
+      const res = await fetch('/api/bot/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_running: newState })
+      });
       
-      if (newState) {
-        alert("Bot iniciado! Analisando mercado...");
-        // Forçar primeira execução sem esperar o cron
-        axios.post('/api/bot/run').catch(console.error);
-      } else {
-        alert("Bot pausado.");
+      if (res.ok) {
+        setBotConfig(prev => ({ ...prev, is_running: newState }));
+        if (newState) {
+          fetch('/api/bot/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: 'BTCUSDT' })
+          }).catch(() => {});
+        }
       }
     } catch (error) {
-      alert("Erro ao alterar status do bot");
+      console.error('Toggle error:', error);
     } finally {
       setLoading(false);
     }

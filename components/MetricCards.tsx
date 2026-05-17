@@ -45,11 +45,14 @@ export default function MetricCards() {
 
     const fetchConfig = async () => {
       try {
-        const { data } = await axios.get('/api/bot/config');
+        const res = await fetch('/api/bot/config', { cache: 'no-store' });
+        const data = await res.json();
         if (data) {
-          setBotConfig(prev => ({ ...prev, is_running: data.is_running }));
+          setBotConfig(prev => ({ ...prev, is_running: data.is_running === true }));
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('Status fetch error:', e);
+      }
     };
 
     fetchBalance();
