@@ -119,7 +119,7 @@ export async function POST(request: Request) {
       result = await supabase.from('bot_config').insert([insertPayload]).select().limit(1);
     }
 
-    const returnData = (result?.data && result.data.length > 0) ? result.data[0] : { ...existing, ...body };
+    const returnData = result?.data ? (Array.isArray(result.data) ? result.data[0] : result.data) : { ...existing, ...body };
     return NextResponse.json(returnData, { status: 200 });
   } catch (error: any) {
     console.error('[POST /api/bot/config] Error:', error);
