@@ -69,8 +69,22 @@ export async function POST(request: Request) {
     const usdtBalance = parseFloat(balanceData.find((b: any) => b.asset === 'USDT')?.availableBalance || '0');
     const activePositionsCount = positionsData.filter((pos: any) => parseFloat(pos.positionAmt) !== 0).length;
 
-    const news = await fetchNews();
-    const sentimentScores = analyzeNewsSentiment(news);
+    let news: any = null;
+    try {
+      news = await fetchNews();
+    } catch(e: any) {
+      console.error('fetchNews failed:', e.message);
+      news = { finalSentiment: { btc: 0, eth: 0 }, headlines: [], 
+        fearGreedIndex: 50, fearGreedLabel: 'Neutro', 
+        fearGreedSentiment: 0, trending: { btc: false, eth: false } };
+    }
+    
+    let sentimentScores: any = { btc: 0, eth: 0 };
+    try {
+      sentimentScores = analyzeNewsSentiment(news);
+    } catch(e: any) {
+      console.error('analyzeNewsSentiment failed:', e.message);
+    }
 
     // Mock Fear & Greed for now, in a real app this would fetch from an API like alternative.me
     const fearAndGreed = 50;
@@ -87,13 +101,29 @@ export async function POST(request: Request) {
       
       // Advanced Metrics
       let mtfAlignment = 'MIXED';
-      if (config.use_mtf !== false) {
-         const mtf = await analyzeMultiTimeframe(symbol, timeframe);
-         mtfAlignment = mtf.trendAlignment;
+      try {
+        if (config.use_mtf !== false) {
+          const mtf = await analyzeMultiTimeframe(symbol, timeframe);
+          mtfAlignment = mtf.trendAlignment;
+        }
+      } catch(e: any) {
+        console.error('MTF failed:', e.message);
+        mtfAlignment = 'MIXED';
       }
 
-      const vwapData = calculateVWAP(klines);
-      const volumeProfile = calculateVolumeProfile(klines);
+      let vwapData = null;
+      try {
+        vwapData = calculateVWAP(klines);
+      } catch(e: any) {
+        console.error('VWAP failed:', e.message);
+      }
+
+      let volumeProfile = null;
+      try {
+        volumeProfile = calculateVolumeProfile(klines);
+      } catch(e: any) {
+        console.error('VolumeProfile failed:', e.message);
+      }
 
       // Session Filter logic
       const sessionFilters = config.session_filter || { asia: true, london: true, ny: true };
@@ -104,7 +134,17 @@ export async function POST(request: Request) {
       if (session === 'OVERLAP_LONDON_NY' && (!sessionFilters.london || !sessionFilters.ny)) sessionAllowed = false;
 
       // Run confluence engine
-      const { score, signal: techSignal, breakdown } = runConfluenceEngine(klines, strategyConfig, mtfAlignment, confidenceMultiplier);
+      let score = 0, techSignal = 'NEUTRAL', breakdown: any = [];
+      try {
+        const result = runConfluenceEngine(
+          klines, strategyConfig, mtfAlignment, confidenceMultiplier
+        );
+        score = result.score;
+        techSignal = result.signal;
+        breakdown = result.breakdown;
+      } catch(e: any) {
+        console.error('ConfluenceEngine failed:', e.message);
+      }
       
       let action = 'none';
       let riskResult = null;
@@ -203,8 +243,16 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ status: 'success', results });
   } catch (error: any) {
-    console.error('Bot run error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('=== BOT RUN ERROR ===');
+    console.error('Message:', error.message);
+    console.error('Stack:', error.stack);
+    console.error('Response data:', error.response?.data);
+    console.error('Response status:', error.response?.status);
+    return NextResponse.json({ 
+      error: error.message,
+      stack: error.stack?.split('\n').slice(0,5),
+      details: error.response?.data || null
+    }, { status: 500 });
   }
 }
 
