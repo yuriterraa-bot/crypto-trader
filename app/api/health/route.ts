@@ -17,7 +17,9 @@ export async function GET() {
     }
 
     // 2. Test Binance
-    const res = await axios.get('https://fapi.binance.com/fapi/v1/ping', { timeout: 5000 });
+    const isTestnet = process.env.BINANCE_TESTNET === 'true';
+    const baseUrl = isTestnet ? 'https://demo-fapi.binance.com' : 'https://fapi.binance.com';
+    const res = await axios.get(`${baseUrl}/fapi/v1/ping`, { timeout: 5000 });
     if (res.data && Object.keys(res.data).length === 0) {
       binanceOk = true;
     }

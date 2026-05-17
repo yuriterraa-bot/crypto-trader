@@ -4,7 +4,7 @@ import crypto from 'crypto-js';
 const API_KEY = process.env.BINANCE_API_KEY || '';
 const SECRET_KEY = process.env.BINANCE_SECRET_KEY || '';
 const isTestnet = process.env.BINANCE_TESTNET === 'true';
-const BASE_URL = isTestnet ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
+const BASE_URL = isTestnet ? 'https://demo-fapi.binance.com' : 'https://fapi.binance.com';
 
 const generateSignature = (queryString: string) => {
   return crypto.HmacSHA256(queryString, SECRET_KEY).toString(crypto.enc.Hex);
