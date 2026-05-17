@@ -88,7 +88,11 @@ export async function POST(request: Request) {
       result = await supabase.from('bot_config').insert([insertPayload]).select().limit(1);
     }
     
-    console.log('Final Supabase Result Data:', JSON.stringify(result.data), 'Error:', JSON.stringify(result.error));
+    console.log('Final Supabase Result Data:', JSON.stringify(result?.data), 'Error:', JSON.stringify(result?.error));
+
+    if (result?.error) {
+      return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+    }
 
     const returnData = result?.data ? (Array.isArray(result.data) ? result.data[0] : result.data) : { ...existing, ...body };
     return NextResponse.json(returnData, { status: 200 });
