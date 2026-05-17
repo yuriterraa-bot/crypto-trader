@@ -154,10 +154,15 @@ export async function POST(request: Request) {
         score = result.score;
         techSignal = result.signal;
         breakdown = result.breakdown;
+        
+        console.log('=== BREAKDOWN DETALHADO ===');
+        console.log(JSON.stringify(breakdown, null, 2));
+        console.log('Score final:', score);
+        console.log('Candles recebidos:', klines.length);
+        console.log('Último candle:', JSON.stringify(klines[klines.length-1]));
       } catch(e: any) {
         console.error('ConfluenceEngine failed:', e.message);
       }
-      
       let action = 'none';
       let riskResult = null;
       let finalRecommendation = techSignal;
@@ -260,7 +265,7 @@ export async function POST(request: Request) {
         }
       }
 
-      results.push({ symbol, score, techSignal, finalRecommendation, action, risk: riskResult, ai: aiResult, sessionAllowed });
+      results.push({ symbol, score, techSignal, finalRecommendation, action, risk: riskResult, ai: aiResult, sessionAllowed, breakdown });
     }
 
     // Auto-reagendar se timeframe < 5m
@@ -283,7 +288,13 @@ export async function POST(request: Request) {
       }, delay);
     }
 
-    return NextResponse.json({ status: 'success', results });
+    return NextResponse.json({ 
+      status: 'success', 
+      results: results.map(r => ({
+        ...r,
+        breakdown: r.breakdown || []
+      }))
+    });
   } catch (error: any) {
     console.error('=== BOT RUN ERROR ===');
     console.error('Message:', error.message);
