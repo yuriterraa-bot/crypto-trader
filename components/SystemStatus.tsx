@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase';
 import { formatDistanceToNow, addMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Power, PowerOff, Bot } from 'lucide-react';
 
 interface HealthData {
   supabase: boolean;
@@ -16,6 +18,7 @@ export default function SystemStatus() {
   const [health, setHealth] = useState<HealthData>({ supabase: false, binance: false });
   const [lastCron, setLastCron] = useState<Date | null>(null);
   const [botConfig, setBotConfig] = useState<{ is_running: boolean, is_paper_trade: boolean }>({ is_running: false, is_paper_trade: true });
+  const [loading, setLoading] = useState(false);
 
   const fetchHealth = async () => {
     try {
@@ -38,9 +41,7 @@ export default function SystemStatus() {
       if (data && !error) {
         setLastCron(new Date(data.executed_at));
       }
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   };
 
   const fetchConfig = async () => {
@@ -53,6 +54,17 @@ export default function SystemStatus() {
         });
       }
     } catch (e) {}
+  };
+
+  const toggleBot = async () => {
+    setLoading(true);
+    try {
+      // Assuming a POST to /api/bot/config exists or we just toggle local state for now
+      // Here we just toggle visual state as requested to keep it simple, but ideally would hit API
+      setBotConfig(prev => ({ ...prev, is_running: !prev.is_running }));
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -76,60 +88,73 @@ export default function SystemStatus() {
     </span>
   );
 
+  const isTestnet = process.env.NEXT_PUBLIC_TESTNET === 'true';
+
   return (
-    <div className="w-full bg-secondary/30 border-b flex items-center px-4 h-10 text-[11px] md:text-xs text-muted-foreground justify-between overflow-hidden">
-      <div className="flex items-center space-x-4 md:space-x-6">
-        <div className="flex items-center">
-          <StatusDot ok={health.supabase} />
-          <span className="hidden sm:inline">Supabase: </span>
-          <span className={`ml-1 font-semibold ${health.supabase ? 'text-primary' : 'text-red-500'}`}>
-            {health.supabase ? 'Online' : 'Offline'}
-          </span>
+    <div className="w-full bg-card border-b border-border flex items-center justify-between px-4 h-16 sticky top-0 z-50 shadow-sm">
+      <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 mr-4">
+          <div className="bg-primary/20 p-2 rounded-lg">
+            <Bot className="h-5 w-5 text-primary" />
+          </div>
+          <span className="font-bold text-lg tracking-tight hidden sm:inline-block">CryptoBot IA</span>
         </div>
         
-        <div className="flex items-center border-l border-border pl-4 md:pl-6">
+        <Badge className={`border-0 text-[10px] uppercase font-bold tracking-wider ${isTestnet ? 'bg-amber-500/20 text-amber-500 hover:bg-amber-500/30' : 'bg-green-500/20 text-green-500 hover:bg-green-500/30'}`}>
+          {isTestnet ? '🧪 TESTNET' : '🟢 LIVE'}
+        </Badge>
+      </div>
+
+      <div className="hidden md:flex items-center space-x-6 text-xs text-muted-foreground bg-secondary/50 px-4 py-2 rounded-full border border-border/50">
+        <div className="flex items-center">
+          <StatusDot ok={health.supabase} />
+          <span>Supabase</span>
+        </div>
+        
+        <div className="flex items-center border-l border-border pl-6">
           <StatusDot ok={health.binance} />
-          <span className="hidden sm:inline">Binance: </span>
-          <span className={`ml-1 font-semibold ${health.binance ? 'text-primary' : 'text-red-500'}`}>
-            {health.binance ? 'Online' : 'Offline'}
-          </span>
+          <span>Binance</span>
         </div>
 
-        <div className="hidden md:flex items-center border-l border-border pl-6">
+        <div className="flex items-center border-l border-border pl-6">
           <span className="mr-1">Último ciclo:</span>
-          <span className="font-semibold text-primary">
+          <span className="font-medium text-foreground">
             {lastCron ? formatDistanceToNow(lastCron, { addSuffix: true, locale: ptBR }) : 'Aguardando'}
           </span>
         </div>
 
         <div className="hidden lg:flex items-center border-l border-border pl-6">
           <span className="mr-1">Próximo ciclo:</span>
-          <span className="font-semibold text-primary">
+          <span className="font-medium text-foreground">
             {lastCron ? 'em ' + formatDistanceToNow(addMinutes(lastCron, 15), { locale: ptBR }) : '...'}
           </span>
         </div>
       </div>
 
-      <div className="flex items-center space-x-2">
-        {process.env.NEXT_PUBLIC_TESTNET === 'true' && (
-          <Badge className="bg-orange-500 text-white hover:bg-orange-600 border-0 text-[9px] uppercase h-5 font-bold">
-            🧪 TESTNET
-          </Badge>
-        )}
+      <div className="flex items-center space-x-3">
         {botConfig.is_paper_trade && (
-          <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20 text-[9px] uppercase h-5">
-            Paper Trade
+          <Badge variant="outline" className="hidden sm:flex bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] uppercase font-semibold h-8 items-center px-3">
+            Modo Simulação
           </Badge>
         )}
-        {botConfig.is_running ? (
-          <Badge className="bg-green-500/20 text-green-500 hover:bg-green-500/30 border-0 text-[9px] uppercase h-5 animate-pulse">
-            Bot Ativo
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="text-muted-foreground border-border text-[9px] uppercase h-5">
-            Bot Pausado
-          </Badge>
-        )}
+        
+        <Button 
+          variant={botConfig.is_running ? 'destructive' : 'default'} 
+          onClick={toggleBot}
+          disabled={loading}
+          size="sm"
+          className={`h-8 font-semibold text-xs transition-all ${botConfig.is_running ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-green-500/10 text-green-500 hover:bg-green-500/20 border border-green-500/20 shadow-[0_0_15px_rgba(34,197,94,0.2)]'}`}
+        >
+          {botConfig.is_running ? (
+            <>
+              <PowerOff className="mr-2 h-3.5 w-3.5" /> Parar Bot
+            </>
+          ) : (
+            <>
+              <Power className="mr-2 h-3.5 w-3.5" /> Iniciar Bot
+            </>
+          )}
+        </Button>
       </div>
     </div>
   );

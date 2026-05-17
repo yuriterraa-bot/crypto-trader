@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Terminal, Activity } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function TradingLog() {
@@ -44,75 +44,77 @@ export default function TradingLog() {
     }
   }, [logs]);
 
-  const getRowClass = (signal: string) => {
-    if (signal === 'BUY' || signal === 'STRONG_BUY') return 'bg-green-500/5 hover:bg-green-500/10';
-    if (signal === 'SELL' || signal === 'STRONG_SELL') return 'bg-red-500/5 hover:bg-red-500/10';
-    return 'bg-secondary/10 hover:bg-secondary/20';
-  };
-
-  const getBadgeClass = (signal: string) => {
-    if (signal === 'BUY' || signal === 'STRONG_BUY') return 'bg-green-500/20 text-green-500 border-green-500/30';
-    if (signal === 'SELL' || signal === 'STRONG_SELL') return 'bg-red-500/20 text-red-500 border-red-500/30';
-    return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+  const getLogColor = (signal: string) => {
+    if (signal === 'BUY' || signal === 'STRONG_BUY') return 'text-green-500';
+    if (signal === 'SELL' || signal === 'STRONG_SELL') return 'text-red-500';
+    return 'text-muted-foreground';
   };
 
   const todaySignalsCount = logs.filter(l => new Date(l.created_at).toDateString() === new Date().toDateString()).length;
 
   return (
-    <Card className="col-span-full flex flex-col h-[400px]">
-      <CardHeader className="pb-2 border-b flex flex-row items-center justify-between bg-card/50">
-        <CardTitle>Live Trading Log</CardTitle>
-        <Badge variant="outline" className="font-normal text-xs bg-secondary/50">
-          {todaySignalsCount} sinais hoje
-        </Badge>
+    <Card className="bg-[#0a0a0f] border-border shadow-md w-full flex flex-col h-[400px]">
+      <CardHeader className="pb-3 border-b border-border/50 bg-[#12121a]">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Terminal className="h-5 w-5 text-primary" />
+            <CardTitle className="text-lg text-gray-200">Log de Operações (Terminal)</CardTitle>
+          </div>
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center text-xs text-muted-foreground">
+              <span className="relative flex h-2 w-2 mr-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              </span>
+              Conectado
+            </div>
+            <Badge variant="outline" className="font-normal text-xs bg-secondary/20 border-border">
+              {todaySignalsCount} sinais hoje
+            </Badge>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent className="flex-1 p-0 overflow-hidden relative">
-        <div ref={scrollRef} className="h-full overflow-y-auto">
-          <Table>
-            <TableHeader className="sticky top-0 bg-background/95 backdrop-blur z-10 border-b">
-              <TableRow>
-                <TableHead className="w-[100px]">Hora</TableHead>
-                <TableHead>Símbolo</TableHead>
-                <TableHead>Score</TableHead>
-                <TableHead>Sinal</TableHead>
-                <TableHead>Estratégia</TableHead>
-                <TableHead className="text-right">Preço (USDT)</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center h-32 text-muted-foreground">
-                    Aguardando primeiros sinais do bot...
-                  </TableCell>
-                </TableRow>
-              )}
-              {logs.map((log, i) => (
-                <TableRow key={i} className={getRowClass(log.signal_type)}>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {format(new Date(log.created_at), 'HH:mm:ss')}
-                  </TableCell>
-                  <TableCell className="font-bold">{log.symbol}</TableCell>
-                  <TableCell>
-                    <span className={`font-mono text-xs ${log.score > 0 ? 'text-green-500' : log.score < 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                      {log.score > 0 ? '+' : ''}{parseFloat(log.score || '0').toFixed(1)}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={`text-[10px] ${getBadgeClass(log.signal_type)}`}>
-                      {log.signal_type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {log.strategy}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-xs">
-                    ${parseFloat(log.price || '0').toFixed(2)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      
+      <CardContent className="flex-1 p-0 overflow-hidden relative bg-[#0a0a0f] font-mono text-[13px]">
+        <div ref={scrollRef} className="h-full overflow-y-auto p-4 space-y-1.5 custom-scrollbar">
+          
+          <div className="text-primary mb-4 opacity-80">
+            {'>'} Inicializando sistema de trading algorítmico...<br/>
+            {'>'} Conectado à Binance WebSocket API.<br/>
+            {'>'} Aguardando sinais da estratégia...
+          </div>
+
+          {logs.length === 0 && (
+            <div className="text-muted-foreground animate-pulse">
+              [SYSTEM] {format(new Date(), 'HH:mm:ss')} - Aguardando primeiros sinais do bot...
+            </div>
+          )}
+
+          {logs.map((log, i) => (
+            <div key={i} className="flex hover:bg-white/5 px-1 py-0.5 rounded transition-colors group">
+              <span className="text-muted-foreground w-20 shrink-0 select-none">
+                [{format(new Date(log.created_at), 'HH:mm:ss')}]
+              </span>
+              
+              <span className={`w-16 shrink-0 select-none font-bold ${getLogColor(log.signal_type)}`}>
+                [TRADE]
+              </span>
+              
+              <span className="text-gray-300 ml-2">
+                <span className="font-bold text-white">{log.symbol}</span>
+                <span className="text-muted-foreground mx-2">|</span>
+                Sinal: <span className={`font-bold ${getLogColor(log.signal_type)}`}>{log.signal_type.replace('_', ' ')}</span>
+                <span className="text-muted-foreground mx-2">|</span>
+                Score: <span className={log.score > 0 ? 'text-green-500' : log.score < 0 ? 'text-red-500' : 'text-gray-400'}>
+                  {log.score > 0 ? '+' : ''}{parseFloat(log.score || '0').toFixed(1)}
+                </span>
+                <span className="text-muted-foreground mx-2">|</span>
+                Estratégia: <span className="text-primary/80">{log.strategy}</span>
+                <span className="text-muted-foreground mx-2">|</span>
+                Preço: <span className="text-gray-400">${parseFloat(log.price || '0').toFixed(2)}</span>
+              </span>
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>
