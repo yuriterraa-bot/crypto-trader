@@ -30,15 +30,31 @@ export async function GET() {
     const { data: configRows, error } = await supabase
       .from('bot_config')
       .select('*')
-      .order('updated_at', { ascending: false });
+      .order('updated_at', { ascending: false })
+      .limit(1);
 
     if (error) {
       console.warn('[GET /api/bot/config] Supabase error:', error.message);
     }
 
-    return NextResponse.json({ debug: true, rows: configRows || [], error });
+    const data = (configRows && configRows.length > 0) ? configRows[0] : null;
+
+    if (!data) {
+      // Retorna o default mas avisa o front que não existe banco
+      console.warn('[GET /api/bot/config] Tabela bot_config está vazia. Crie uma linha no Supabase!');
+      return NextResponse.json({ ...DEFAULT_CONFIG, _is_empty: true });
+    }
+
+    // Se existe mas strategy_config está vazio
+    if (!data.strategy_config || Object.keys(data.strategy_config).length === 0) {
+      data.strategy_config = DEFAULT_CONFIG.strategy_config;
+    }
+
+    data.timeframe = data.timeframe || '15m';
+    return NextResponse.json(data);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('[GET /api/bot/config] Error:', error);
+    return NextResponse.json(DEFAULT_CONFIG);
   }
 }
 
