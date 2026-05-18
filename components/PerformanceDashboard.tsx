@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, Activity, BarChart2, DollarSign, Target, Percent, Wifi } from 'lucide-react';
+import { TrendingUp, Activity, BarChart2, Target, Percent, Wifi } from 'lucide-react';
 import { format, subDays, startOfDay } from 'date-fns';
 
 export default function PerformanceDashboard() {
@@ -15,7 +15,7 @@ export default function PerformanceDashboard() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Busca sinais do Supabase para histórico
+  // ── Sinais do Supabase ─────────────────────────────────
   const fetchSignals = useCallback(async () => {
     try {
       const { data } = await supabase
@@ -29,7 +29,7 @@ export default function PerformanceDashboard() {
     }
   }, []);
 
-  // Busca P&L real das posições abertas da Binance
+  // ── P&L real das posições abertas ─────────────────────
   const fetchRealPnl = useCallback(async () => {
     try {
       const res = await fetch('/api/binance/positions', { cache: 'no-store' });
@@ -37,11 +37,11 @@ export default function PerformanceDashboard() {
       const openPos = Array.isArray(positions)
         ? positions.filter((p: any) => Math.abs(parseFloat(p.positionAmt || '0')) > 0)
         : [];
-      const totalPnl = openPos.reduce(
+      const total = openPos.reduce(
         (sum: number, p: any) => sum + parseFloat(p.unrealizedProfit || p.unRealizedProfit || '0'),
         0
       );
-      setUnrealizedPnl(totalPnl);
+      setUnrealizedPnl(total);
       setOpenPositionsCount(openPos.length);
     } catch (e) { /* ignore */ }
   }, []);
@@ -55,39 +55,46 @@ export default function PerformanceDashboard() {
     return () => { clearInterval(sigInt); clearInterval(pnlInt); };
   }, [fetchSignals, fetchRealPnl]);
 
-  // Contagens por direção de sinais
+  // ── Métricas ───────────────────────────────────────────
   const buys = signals.filter(s => s.signal_type === 'BUY');
-  const sells = signals.filter(s => s.signal_type === 'SELL');
   const winRate = signals.length > 0 ? (buys.length / signals.length) * 100 : 0;
 
   const now = new Date();
   const startOfToday = startOfDay(now);
   const startOfWeek = subDays(startOfToday, 7);
 
-  const signalsToday = signals.filter(t => new Date(t.created_at) >= startOfToday).length;
-  const signalsWeek  = signals.filter(t => new Date(t.created_at) >= startOfWeek).length;
+  const signalsToday = signals.filter(s => new Date(s.created_at) >= startOfToday).length;
+  const signalsWeek = signals.filter(s => new Date(s.created_at) >= startOfWeek).length;
 
-  // Equity curve simulated from signal scores
+  // Equity curve from signal scores
   let cumulative = 0;
   const equityData = [...signals].reverse().map((s, i) => {
     cumulative += s.score > 0 ? 0.1 : -0.05;
-    return { index: i + 1, equity: parseFloat(cumulative.toFixed(2)), date: format(new Date(s.created_at), 'dd/MM HH:mm') };
+    return {
+      index: i + 1,
+      equity: parseFloat(cumulative.toFixed(2)),
+      date: format(new Date(s.created_at), 'dd/MM HH:mm'),
+    };
   });
 
-  if (loading) return <div className="p-4 text-muted-foreground animate-pulse">Carregando métricas de performance...</div>;
+  if (loading) {
+    return <div className="p-4 text-muted-foreground animate-pulse">Carregando métricas de performance...</div>;
+  }
+
   if (!mounted) return null;
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center space-x-3 mb-6">
         <Activity className="w-8 h-8 text-indigo-500" />
         <div>
           <h2 className="text-2xl font-black uppercase tracking-wider">Performance Analytics</h2>
-          <p className="text-sm text-muted-foreground">Métricas avançadas e histórico de operações</p>
+          <p className="text-sm text-muted-foreground">Métricas avançadas e histórico de sinais</p>
         </div>
       </div>
 
-      {/* Row 1: Key Metrics */}
+      {/* Row 1: Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {/* P&L Aberto — fonte real: Binance */}
         <div className="col-span-2 md:col-span-1 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl flex flex-col justify-between h-[100px]">
@@ -99,6 +106,7 @@ export default function PerformanceDashboard() {
             {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
           </div>
         </div>
+
         <MetricCard title="Posições Abertas" value={openPositionsCount} icon={<BarChart2 className="w-4 h-4" />} />
         <MetricCard title="Win Rate (Sinais)" value={`${winRate.toFixed(1)}%`} icon={<Percent className="w-4 h-4" />} />
         <MetricCard title="Sinais Hoje" value={signalsToday} icon={<Activity className="w-4 h-4" />} />
@@ -106,35 +114,35 @@ export default function PerformanceDashboard() {
         <MetricCard title="Total Sinais" value={signals.length} icon={<BarChart2 className="w-4 h-4" />} />
       </div>
 
-      {/* Row 2: Charts */}
+      {/* Row 2: Chart + P&L Summary */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Equity Curve */}
         <Card className="lg:col-span-2 bg-card border-border shadow-md">
           <CardHeader className="border-b border-border/50 bg-secondary/5 pb-4">
             <CardTitle className="text-sm font-bold uppercase tracking-wider flex items-center">
-              <TrendingUp className="w-4 h-4 mr-2" /> Curva de Capital Líquido
+              <TrendingUp className="w-4 h-4 mr-2" /> Curva de Capital (Score Acumulado)
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 h-[300px]">
-            {!mounted ? (
-              <div style={{ height: '100%', width: '100%', background: 'transparent' }} />
-            ) : (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <LineChart data={equityData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.4} />
-                <XAxis dataKey="date" className="text-xs" stroke="hsl(var(--muted-foreground))" tickLine={false} axisLine={false} />
-                <YAxis className="text-xs" stroke="hsl(var(--muted-foreground))" tickFormatter={(val) => `$${val}`} tickLine={false} axisLine={false} />
-                <RechartsTooltip 
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '0.5rem' }}
-                  itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: 'bold' }}
-                />
-                <Line type="monotone" dataKey="equity" stroke="#6366f1" strokeWidth={3} dot={false} fill="url(#colorEquity)" />
-              </LineChart>
-            </ResponsiveContainer>
+            {mounted && (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                <LineChart data={equityData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.4} />
+                  <XAxis dataKey="date" className="text-xs" stroke="hsl(var(--muted-foreground))" tickLine={false} axisLine={false} />
+                  <YAxis className="text-xs" stroke="hsl(var(--muted-foreground))" tickLine={false} axisLine={false} />
+                  <RechartsTooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '0.5rem' }}
+                    itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: 'bold' }}
+                  />
+                  <Line type="monotone" dataKey="equity" stroke="#6366f1" strokeWidth={3} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border shadow-md flex flex-col justify-between">
+        {/* P&L Real Summary */}
+        <Card className="bg-card border-border shadow-md">
           <CardHeader className="border-b border-border/50 bg-secondary/5 pb-4">
             <CardTitle className="text-sm font-bold uppercase tracking-wider">P&amp;L Real (Binance)</CardTitle>
           </CardHeader>
@@ -150,6 +158,12 @@ export default function PerformanceDashboard() {
               <span className="font-mono font-black text-muted-foreground">$0.00</span>
             </div>
             <div className="flex justify-between items-center border-b border-border/50 pb-3">
+              <span className="text-muted-foreground font-bold text-sm">Posições Abertas</span>
+              <span className={`font-mono font-black ${openPositionsCount > 0 ? 'text-green-400' : 'text-foreground'}`}>
+                {openPositionsCount}
+              </span>
+            </div>
+            <div className="flex justify-between items-center border-b border-border/50 pb-3">
               <span className="text-muted-foreground font-bold text-sm">Sinais Hoje</span>
               <span className="font-mono font-black">{signalsToday}</span>
             </div>
@@ -158,9 +172,10 @@ export default function PerformanceDashboard() {
               <span className="font-mono font-black">{signalsWeek}</span>
             </div>
           </CardContent>
+        </Card>
       </div>
 
-      {/* Row 3: Signals Table */}
+      {/* Row 3: Signal Log Table */}
       <Card className="bg-card border-border shadow-md">
         <CardHeader className="border-b border-border/50 bg-secondary/5 pb-4">
           <CardTitle className="text-sm font-bold uppercase tracking-wider">Log de Sinais AIM (Últimos 50)</CardTitle>
@@ -179,12 +194,18 @@ export default function PerformanceDashboard() {
             <TableBody>
               {signals.map((s: any) => (
                 <TableRow key={s.id} className="border-border">
-                  <TableCell className="text-xs text-muted-foreground font-mono">{format(new Date(s.created_at), 'dd/MM HH:mm')}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground font-mono">
+                    {format(new Date(s.created_at), 'dd/MM HH:mm')}
+                  </TableCell>
                   <TableCell className="font-bold">{s.symbol}</TableCell>
                   <TableCell>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
-                      s.signal_type === 'BUY' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
-                    }`}>{s.signal_type}</span>
+                      s.signal_type === 'BUY'
+                        ? 'bg-green-500/10 text-green-500'
+                        : 'bg-red-500/10 text-red-500'
+                    }`}>
+                      {s.signal_type}
+                    </span>
                   </TableCell>
                   <TableCell className="font-mono text-xs">
                     ${parseFloat(s.price || '0').toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -198,7 +219,9 @@ export default function PerformanceDashboard() {
               ))}
               {signals.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">Nenhum sinal registrado ainda.</TableCell>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    Nenhum sinal registrado ainda.
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -209,7 +232,12 @@ export default function PerformanceDashboard() {
   );
 }
 
-function MetricCard({ title, value, icon, valueClass = 'text-foreground', isCurrency = false }: any) {
+function MetricCard({ title, value, icon, valueClass = 'text-foreground' }: {
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+  valueClass?: string;
+}) {
   return (
     <div className="bg-secondary/10 p-4 rounded-xl border border-border flex flex-col justify-between h-[100px]">
       <div className="flex justify-between items-start">
