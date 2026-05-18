@@ -32,10 +32,11 @@ export default function BotStatusButton() {
         body: JSON.stringify({ is_running: newStatus })
       });
       const data = await res.json();
-      // Usar o valor que veio do banco, não o local
-      setIsRunning(data.is_running === true || 
-                   data.config?.is_running === true ||
-                   newStatus);
+      const confirmed = data.is_running === true;
+      setIsRunning(confirmed);
+      
+      // Notifica outros componentes para sincronizarem
+      window.dispatchEvent(new Event('bot-status-changed'));
       
       if (newStatus) {
         // Disparar análise em background

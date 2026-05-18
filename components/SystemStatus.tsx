@@ -101,7 +101,14 @@ export default function SystemStatus() {
       fetchConfig();
     }, 30000);
     
-    return () => clearInterval(interval);
+    // Sincroniza imediatamente quando o botão for clicado em outro componente
+    const onBotToggle = () => fetchConfig();
+    window.addEventListener('bot-status-changed', onBotToggle);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('bot-status-changed', onBotToggle);
+    };
   }, []);
 
   if (!mounted) return null;

@@ -65,9 +65,17 @@ export default function MetricCards() {
 
     const interval = setInterval(() => {
       fetchPrices();
+      fetchConfig(); // Polling de status a cada 10s
     }, 10000);
 
-    return () => clearInterval(interval);
+    // Escuta evento global de toggle do bot
+    const onBotToggle = () => fetchConfig();
+    window.addEventListener('bot-status-changed', onBotToggle);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('bot-status-changed', onBotToggle);
+    };
   }, []);
 
   if (!mounted) return null;
