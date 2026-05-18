@@ -17,6 +17,7 @@ import TimeframeSelector from './TimeframeSelector';
 import PerformanceDashboard from './PerformanceDashboard';
 import OpenPositions from './OpenPositions';
 import BotAnalysisPanel from './BotAnalysisPanel';
+import TradingChart from './TradingChart';
 
 export default function Dashboard() {
   const manageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -49,6 +50,9 @@ export default function Dashboard() {
       <div className="flex-1 space-y-6 p-4 md:p-6 lg:p-8 w-full max-w-[1600px] mx-auto">
         <TimeframeSelector />
 
+        {/* ── Gráfico de Trading Profissional ── */}
+        <TradingChart symbol="BTCUSDT" />
+
         {/* Linha 1: Métricas */}
         <MetricCards />
 
@@ -79,11 +83,6 @@ export default function Dashboard() {
 
         {/* Linha 4: Gestão de Risco */}
         <RiskManagerPanel />
-
-        {/* Linha 5: Gráfico */}
-        <div className="grid gap-6 grid-cols-1">
-          <PriceChart />
-        </div>
 
         {/* Linha 6: Painel de Estratégias */}
         <div className="grid gap-6 grid-cols-1">
