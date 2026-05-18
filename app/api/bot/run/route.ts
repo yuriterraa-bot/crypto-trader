@@ -23,10 +23,11 @@ export async function POST(request: Request) {
       // Ignore JSON parse errors for empty body
     }
 
-    // 1. Get bot config
+    // 1. Get bot config (sempre pegar a linha mais recente)
     const { data: configRows, error: configError } = await supabase
       .from('bot_config')
       .select('*')
+      .order('updated_at', { ascending: false })
       .limit(1);
 
     if (configError) throw configError;
