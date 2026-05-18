@@ -277,91 +277,98 @@ export async function POST(request: Request) {
       results.push({ symbol, score, techSignal, finalRecommendation, action, risk: riskResult, ai: aiResult, sessionAllowed, breakdown });
 
       // ── ALWAYS-IN MARKET ─────────────────────────────────────────────
-      console.log(`[AIM] always_in_market=${config.always_in_market}, symbol=${symbol}`);
+      console.log(`[AIM] always_in_market=${config.always_in_market}, symbol=${symbol}, paper=${config.is_paper_trade}`);
       if (config.always_in_market) {
         try {
           const aimResult = alwaysInMarketStrategy(klines);
           console.log('[AIM] Result:', JSON.stringify(aimResult));
 
-          // Detectar posição atual neste símbolo
           const openPos = positionsData.find(
             (p: any) => p.symbol === symbol && Math.abs(parseFloat(p.positionAmt)) > 0
           );
           console.log('[AIM] Open position:', JSON.stringify(openPos || null));
 
-          const currentSide = openPos
-            ? (parseFloat(openPos.positionAmt) > 0 ? 'LONG' : 'SHORT')
-            : null;
+          const side: 'BUY' | 'SELL' = aimResult.direction === 'LONG' ? 'BUY' : 'SELL';
+          const currentPrice = klines[klines.length - 1].close;
+          const qty = calculateQuantity(usdtBalance * 0.95, currentPrice, symbol);
 
-          let aimAction: 'open' | 'reverse' | 'hold' = 'hold';
-          if (!currentSide) {
-            aimAction = 'open';
-          } else if (currentSide !== aimResult.direction) {
-            aimAction = 'reverse';
+          let aimAction = 'none';
+          let orderResult: any = null;
+
+          if (!openPos || Math.abs(parseFloat(openPos.positionAmt)) === 0) {
+            // Sem posição: abrir sempre
+            aimAction = 'OPEN';
+            console.log(`[AIM] Abrindo ${side} ${qty} ${symbol}`);
+
+            if (!config.is_paper_trade) {
+              try {
+                orderResult = await openPosition(symbol, side, qty, config.leverage || 3);
+                console.log('[AIM] Ordem executada:', JSON.stringify(orderResult));
+              } catch (e: any) {
+                console.error('[AIM] Erro ao abrir posição:', e.response?.data || e.message);
+                aimAction = 'ERROR';
+              }
+            }
+
+          } else {
+            const currentSide = parseFloat(openPos.positionAmt) > 0 ? 'LONG' : 'SHORT';
+
+            if (currentSide !== aimResult.direction) {
+              // Direção diferente: reverter posição
+              aimAction = 'REVERSE';
+              console.log(`[AIM] Revertendo ${currentSide} → ${aimResult.direction}`);
+
+              if (!config.is_paper_trade) {
+                try {
+                  const closeSide: 'BUY' | 'SELL' = currentSide === 'LONG' ? 'SELL' : 'BUY';
+                  await closePosition(symbol, closeSide);
+                  console.log('[AIM] Posição fechada');
+                  await new Promise(r => setTimeout(r, 500));
+                  orderResult = await openPosition(symbol, side, qty, config.leverage || 3);
+                  console.log('[AIM] Nova posição aberta:', JSON.stringify(orderResult));
+                } catch (e: any) {
+                  console.error('[AIM] Erro ao reverter:', e.response?.data || e.message);
+                  aimAction = 'ERROR';
+                }
+              }
+            } else {
+              aimAction = 'HOLD';
+              console.log(`[AIM] Mantendo ${currentSide} para ${symbol}`);
+            }
           }
 
-          const aimSide: 'BUY' | 'SELL' = aimResult.direction === 'LONG' ? 'BUY' : 'SELL';
-          const currentPrice = klines[klines.length - 1].close;
-
-          console.log(`[AIM] Action=${aimAction}, side=${aimSide}, paper=${config.is_paper_trade}`);
-
-          if (aimAction !== 'hold') {
-            // Sempre registrar sinal (paper e live)
+          // Registrar sinal e trade apenas se houve ação
+          if (aimAction === 'OPEN' || aimAction === 'REVERSE') {
             await supabase.from('signals').insert([{
               symbol,
               strategy: 'AlwaysInMarket',
-              signal_type: aimSide,
+              signal_type: side,
               price: currentPrice,
               score: aimResult.score,
-              breakdown: aimResult.reasons.map((r: string) => ({ indicator: r, contribution: 0, signal: aimResult.direction }))
+              breakdown: aimResult.reasons?.map((r: string) => ({ indicator: r, contribution: 0, signal: r })) || []
             }]).then(() => console.log('[AIM] Signal saved'))
-              .catch((e: any) => console.error('[AIM] Signal save error:', e.message));
+              .catch((e: any) => console.error('[AIM] Signal error:', e.message));
 
-            if (config.is_paper_trade) {
-              // Paper trade: registrar trade simulado
-              const paperQty = (usdtBalance * 0.95 / currentPrice);
-              const qty = symbol.includes('BTC') ? (Math.floor(paperQty * 1000) / 1000)
-                : symbol.includes('ETH') ? (Math.floor(paperQty * 100) / 100)
-                : (Math.floor(paperQty * 10) / 10);
-
-              await supabase.from('trades').insert([{
-                symbol,
-                side: aimSide,
-                quantity: qty,
-                price: currentPrice,
-                status: 'PAPER',
-                created_at: new Date().toISOString()
-              }]).then(() => console.log('[AIM] Paper trade saved'))
-                .catch((e: any) => console.error('[AIM] Trade save error:', e.message));
-
-            } else {
-              // Live trade: executar na Binance
-              const lev = config.leverage || 3;
-
-              if (aimAction === 'reverse' && openPos) {
-                const closeSide: 'BUY' | 'SELL' = parseFloat(openPos.positionAmt) > 0 ? 'SELL' : 'BUY';
-                await closePosition(symbol, closeSide)
-                  .then(() => console.log('[AIM] Position closed'))
-                  .catch((e: any) => console.error('[AIM] closePosition error:', e.response?.data || e.message));
-              }
-
-              const qty = calculateQuantity(usdtBalance * 0.95, currentPrice, symbol);
-              if (qty > 0) {
-                await openPosition(symbol, aimSide, qty, lev)
-                  .then(() => console.log('[AIM] Position opened:', qty, symbol))
-                  .catch((e: any) => console.error('[AIM] openPosition error:', e.response?.data || e.message));
-              } else {
-                console.warn('[AIM] qty=0, insufficient balance');
-              }
-            }
-          } else {
-            console.log('[AIM] Holding current position, no action needed');
+            await supabase.from('trades').insert([{
+              symbol,
+              side,
+              quantity: qty,
+              price: currentPrice,
+              status: config.is_paper_trade ? 'PAPER' : 'FILLED',
+              created_at: new Date().toISOString()
+            }]).then(() => console.log('[AIM] Trade saved'))
+              .catch((e: any) => console.error('[AIM] Trade error:', e.message));
           }
 
-          // Atualizar último resultado com dados AIM
+          // Sobrescrever resultado do símbolo com dados AIM
           const lastResult = results[results.length - 1];
           if (lastResult) {
-            lastResult.aim = { ...aimResult, action: aimAction, currentSide };
+            lastResult.aim = {
+              ...aimResult,
+              action: aimAction,
+              currentSide: openPos ? (parseFloat(openPos.positionAmt) > 0 ? 'LONG' : 'SHORT') : null,
+              orderResult: orderResult || null,
+            };
           }
         } catch (aimErr: any) {
           console.error('[AIM] Strategy error:', aimErr.message, aimErr.stack?.split('\n')[1]);
