@@ -63,13 +63,15 @@ export async function POST(request: Request) {
     const body: any = await request.json();
     console.log('Updating bot config:', JSON.stringify(body));
     
+    // Sempre ler a linha mais recente (previne problema de 2 linhas)
     const { data: existingRows } = await supabase
       .from('bot_config')
       .select('*')
+      .order('updated_at', { ascending: false })
       .limit(1);
 
     const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
-    console.log('Existing config:', JSON.stringify(existing));
+    console.log('Existing config id:', existing?.id, 'is_running:', existing?.is_running);
 
     let result;
 
@@ -104,6 +106,16 @@ export async function POST(request: Request) {
     } else {
       const insertPayload = { ...DEFAULT_CONFIG, ...body };
       result = await supabase.from('bot_config').insert([insertPayload]).select().limit(1);
+    }
+
+    // Limpar linhas duplicadas (manter apenas a mais recente)
+    if (existing?.id) {
+      const { data: allRows } = await supabase.from('bot_config').select('id').order('updated_at', { ascending: false });
+      if (allRows && allRows.length > 1) {
+        const idsToDelete = allRows.slice(1).map((r: any) => r.id);
+        await supabase.from('bot_config').delete().in('id', idsToDelete);
+        console.log(`Removed ${idsToDelete.length} duplicate row(s) from bot_config`);
+      }
     }
     
     console.log('Final Supabase Result Data:', JSON.stringify(result?.data), 'Error:', JSON.stringify(result?.error));
