@@ -15,12 +15,12 @@ export default function OpenPositions() {
 
   const fetchPositions = async () => {
     try {
-      const res = await axios.get('/api/orders');
-      if (res.data) {
-        // filter out zero positions
-        const active = res.data.filter((p: any) => parseFloat(p.positionAmt) !== 0);
-        setPositions(active);
-      }
+      const res = await fetch('/api/binance/positions', { cache: 'no-store' });
+      const data = await res.json();
+      const active = Array.isArray(data)
+        ? data.filter((p: any) => Math.abs(parseFloat(p.positionAmt || '0')) > 0)
+        : [];
+      setPositions(active);
     } catch (e) {
       console.error('Fetch positions error:', e);
     } finally {
@@ -90,7 +90,7 @@ export default function OpenPositions() {
             <TableBody>
               {positions.map((p: any) => {
                 const isLong = parseFloat(p.positionAmt) > 0;
-                const pnl = parseFloat(p.unRealizedProfit);
+                const pnl = parseFloat(p.unrealizedProfit || p.unRealizedProfit || '0');
                 return (
                   <TableRow key={p.symbol} className="border-border">
                     <TableCell className="font-bold">{p.symbol}</TableCell>

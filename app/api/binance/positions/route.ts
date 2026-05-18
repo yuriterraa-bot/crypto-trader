@@ -9,8 +9,11 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await getPositions(symbol || undefined);
-    // Retornar TODAS as posições (incluindo zero) — o client filtra
-    return NextResponse.json(Array.isArray(data) ? data : [], {
+    // Filtrar APENAS posições abertas reais (positionAmt != 0)
+    const openPositions = Array.isArray(data)
+      ? data.filter((p: any) => Math.abs(parseFloat(p.positionAmt || '0')) > 0)
+      : [];
+    return NextResponse.json(openPositions, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate',
         'Pragma': 'no-cache',

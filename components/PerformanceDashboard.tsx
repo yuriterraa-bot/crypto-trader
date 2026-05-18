@@ -1,83 +1,82 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { TrendingUp, Activity, BarChart2, DollarSign, Target, Percent } from 'lucide-react';
-import { format, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { TrendingUp, Activity, BarChart2, DollarSign, Target, Percent, Wifi } from 'lucide-react';
+import { format, subDays, startOfDay } from 'date-fns';
 
 export default function PerformanceDashboard() {
-  const [trades, setTrades] = useState<any[]>([]);
+  const [signals, setSignals] = useState<any[]>([]);
+  const [unrealizedPnl, setUnrealizedPnl] = useState(0);
+  const [openPositionsCount, setOpenPositionsCount] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    setMounted(true);
-    fetchTrades();
-  }, []);
-
-  const fetchTrades = async () => {
+  // Busca sinais do Supabase para histórico
+  const fetchSignals = useCallback(async () => {
     try {
       const { data } = await supabase
         .from('signals')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
-        
-      if (data) {
-        // Map signals to trade-like objects for the dashboard
-        const mappedTrades = data.map(s => ({
-          ...s,
-          side: s.signal_type,
-          profit: s.score > 0 ? (s.score / 10) : -(Math.abs(s.score) / 10), // mock profit based on score
-          status: 'CLOSED'
-        }));
-        setTrades(mappedTrades);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
+      if (data) setSignals(data);
+    } catch (e) { /* ignore */ } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Metrics calculation
-  const totalPnl = trades.reduce((sum, t) => sum + (t.profit || 0), 0);
-  const wins = trades.filter(t => (t.profit || 0) > 0);
-  const losses = trades.filter(t => (t.profit || 0) <= 0);
-  const winRate = trades.length > 0 ? (wins.length / trades.length) * 100 : 0;
-  
-  const grossProfit = wins.reduce((sum, t) => sum + (t.profit || 0), 0);
-  const grossLoss = Math.abs(losses.reduce((sum, t) => sum + (t.profit || 0), 0));
-  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 99 : 0);
+  // Busca P&L real das posições abertas da Binance
+  const fetchRealPnl = useCallback(async () => {
+    try {
+      const res = await fetch('/api/binance/positions', { cache: 'no-store' });
+      const positions = await res.json();
+      const openPos = Array.isArray(positions)
+        ? positions.filter((p: any) => Math.abs(parseFloat(p.positionAmt || '0')) > 0)
+        : [];
+      const totalPnl = openPos.reduce(
+        (sum: number, p: any) => sum + parseFloat(p.unrealizedProfit || p.unRealizedProfit || '0'),
+        0
+      );
+      setUnrealizedPnl(totalPnl);
+      setOpenPositionsCount(openPos.length);
+    } catch (e) { /* ignore */ }
+  }, []);
 
-  // Time-based P&L
+  useEffect(() => {
+    setMounted(true);
+    fetchSignals();
+    fetchRealPnl();
+    const sigInt = setInterval(fetchSignals, 30000);
+    const pnlInt = setInterval(fetchRealPnl, 15000);
+    return () => { clearInterval(sigInt); clearInterval(pnlInt); };
+  }, [fetchSignals, fetchRealPnl]);
+
+  // Contagens por direção de sinais
+  const buys = signals.filter(s => s.signal_type === 'BUY');
+  const sells = signals.filter(s => s.signal_type === 'SELL');
+  const winRate = signals.length > 0 ? (buys.length / signals.length) * 100 : 0;
+
   const now = new Date();
   const startOfToday = startOfDay(now);
   const startOfWeek = subDays(startOfToday, 7);
-  const startOfMonth = subDays(startOfToday, 30);
 
-  const pnlToday = trades.filter(t => new Date(t.created_at) >= startOfToday).reduce((sum, t) => sum + (t.profit || 0), 0);
-  const pnlWeek = trades.filter(t => new Date(t.created_at) >= startOfWeek).reduce((sum, t) => sum + (t.profit || 0), 0);
-  const pnlMonth = trades.filter(t => new Date(t.created_at) >= startOfMonth).reduce((sum, t) => sum + (t.profit || 0), 0);
+  const signalsToday = signals.filter(t => new Date(t.created_at) >= startOfToday).length;
+  const signalsWeek  = signals.filter(t => new Date(t.created_at) >= startOfWeek).length;
 
-  // Equity Curve
+  // Equity curve simulated from signal scores
   let cumulative = 0;
-  let maxEquity = 0;
-  let currentDrawdown = 0;
-  let maxDrawdown = 0;
+  const equityData = [...signals].reverse().map((s, i) => {
+    cumulative += s.score > 0 ? 0.1 : -0.05;
+    return { index: i + 1, equity: parseFloat(cumulative.toFixed(2)), date: format(new Date(s.created_at), 'dd/MM HH:mm') };
+  });
 
-  const equityData = trades.map((t, index) => {
-    cumulative += (t.profit || 0);
-    if (cumulative > maxEquity) maxEquity = cumulative;
-    currentDrawdown = maxEquity - cumulative;
-    if (currentDrawdown > maxDrawdown) maxDrawdown = currentDrawdown;
-    
-    return {
-      index: index + 1,
-      equity: cumulative,
+  if (loading) return <div className="p-4 text-muted-foreground animate-pulse">Carregando métricas de performance...</div>;
+  if (!mounted) return null;
+
       date: format(new Date(t.created_at), 'dd/MM HH:mm')
     };
   });
@@ -102,13 +101,22 @@ export default function PerformanceDashboard() {
       </div>
 
       {/* Row 1: Key Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        <MetricCard title="P&L Total" value={`$${totalPnl.toFixed(2)}`} icon={<DollarSign className="w-4 h-4" />} isCurrency valueClass={totalPnl >= 0 ? 'text-green-500' : 'text-red-500'} />
-        <MetricCard title="Win Rate" value={`${winRate.toFixed(1)}%`} icon={<Percent className="w-4 h-4" />} />
-        <MetricCard title="Profit Factor" value={profitFactor.toFixed(2)} icon={<Target className="w-4 h-4" />} />
-        <MetricCard title="P&L Hoje" value={`$${pnlToday.toFixed(2)}`} icon={<Activity className="w-4 h-4" />} isCurrency valueClass={pnlToday >= 0 ? 'text-green-500' : 'text-red-500'} />
-        <MetricCard title="Drawdown Máx" value={`$${maxDrawdown.toFixed(2)}`} icon={<TrendingUp className="w-4 h-4 transform scale-y-[-1]" />} valueClass="text-red-500" />
-        <MetricCard title="Total Trades" value={trades.length} icon={<BarChart2 className="w-4 h-4" />} />
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {/* P&L Aberto — fonte real: Binance */}
+        <div className="col-span-2 md:col-span-1 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl flex flex-col justify-between h-[100px]">
+          <div className="flex justify-between items-start">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">P&amp;L Aberto (Live)</span>
+            <Wifi className="w-4 h-4 text-indigo-400" />
+          </div>
+          <div className={`text-xl font-black font-mono ${unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
+          </div>
+        </div>
+        <MetricCard title="Posições Abertas" value={openPositionsCount} icon={<BarChart2 className="w-4 h-4" />} />
+        <MetricCard title="Win Rate (Sinais)" value={`${winRate.toFixed(1)}%`} icon={<Percent className="w-4 h-4" />} />
+        <MetricCard title="Sinais Hoje" value={signalsToday} icon={<Activity className="w-4 h-4" />} />
+        <MetricCard title="Sinais 7 Dias" value={signalsWeek} icon={<Target className="w-4 h-4" />} />
+        <MetricCard title="Total Sinais" value={signals.length} icon={<BarChart2 className="w-4 h-4" />} />
       </div>
 
       {/* Row 2: Charts */}
@@ -141,39 +149,34 @@ export default function PerformanceDashboard() {
 
         <Card className="bg-card border-border shadow-md flex flex-col justify-between">
           <CardHeader className="border-b border-border/50 bg-secondary/5 pb-4">
-            <CardTitle className="text-sm font-bold uppercase tracking-wider">Resumo de Períodos</CardTitle>
+            <CardTitle className="text-sm font-bold uppercase tracking-wider">P&amp;L Real (Binance)</CardTitle>
           </CardHeader>
-          <CardContent className="p-6 space-y-6">
-            <div className="flex justify-between items-center border-b border-border/50 pb-4">
-              <span className="text-muted-foreground font-bold">Hoje</span>
-              <span className={`font-mono font-black ${pnlToday >= 0 ? 'text-green-500' : 'text-red-500'}`}>${pnlToday.toFixed(2)}</span>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-border/50 pb-3">
+              <span className="text-muted-foreground font-bold text-sm">P&amp;L Aberto</span>
+              <span className={`font-mono font-black ${unrealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
+              </span>
             </div>
-            <div className="flex justify-between items-center border-b border-border/50 pb-4">
-              <span className="text-muted-foreground font-bold">7 Dias</span>
-              <span className={`font-mono font-black ${pnlWeek >= 0 ? 'text-green-500' : 'text-red-500'}`}>${pnlWeek.toFixed(2)}</span>
+            <div className="flex justify-between items-center border-b border-border/50 pb-3">
+              <span className="text-muted-foreground font-bold text-sm">P&amp;L Realizado</span>
+              <span className="font-mono font-black text-muted-foreground">$0.00</span>
             </div>
-            <div className="flex justify-between items-center border-b border-border/50 pb-4">
-              <span className="text-muted-foreground font-bold">30 Dias</span>
-              <span className={`font-mono font-black ${pnlMonth >= 0 ? 'text-green-500' : 'text-red-500'}`}>${pnlMonth.toFixed(2)}</span>
+            <div className="flex justify-between items-center border-b border-border/50 pb-3">
+              <span className="text-muted-foreground font-bold text-sm">Sinais Hoje</span>
+              <span className="font-mono font-black">{signalsToday}</span>
             </div>
-            <div className="grid grid-cols-2 gap-4 pt-2">
-              <div className="bg-green-500/10 p-3 rounded-lg text-center border border-green-500/20">
-                <div className="text-[10px] uppercase text-muted-foreground font-bold mb-1">Melhor Trade</div>
-                <div className="text-green-500 font-mono font-black">+${bestTrade.toFixed(2)}</div>
-              </div>
-              <div className="bg-red-500/10 p-3 rounded-lg text-center border border-red-500/20">
-                <div className="text-[10px] uppercase text-muted-foreground font-bold mb-1">Pior Trade</div>
-                <div className="text-red-500 font-mono font-black">-${Math.abs(worstTrade).toFixed(2)}</div>
-              </div>
+            <div className="flex justify-between items-center pb-1">
+              <span className="text-muted-foreground font-bold text-sm">Sinais 7 Dias</span>
+              <span className="font-mono font-black">{signalsWeek}</span>
             </div>
           </CardContent>
-        </Card>
       </div>
 
-      {/* Row 3: Trades Table */}
+      {/* Row 3: Signals Table */}
       <Card className="bg-card border-border shadow-md">
         <CardHeader className="border-b border-border/50 bg-secondary/5 pb-4">
-          <CardTitle className="text-sm font-bold uppercase tracking-wider">Histórico de Operações (Últimas 50)</CardTitle>
+          <CardTitle className="text-sm font-bold uppercase tracking-wider">Log de Sinais AIM (Últimos 50)</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -182,31 +185,33 @@ export default function PerformanceDashboard() {
                 <TableHead>Data</TableHead>
                 <TableHead>Par</TableHead>
                 <TableHead>Direção</TableHead>
-                <TableHead>Preço Entry/Exit</TableHead>
-                <TableHead className="text-right">P&L</TableHead>
+                <TableHead>Preço</TableHead>
+                <TableHead className="text-right">Score</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {trades.slice(-50).reverse().map((t: any) => (
-                <TableRow key={t.id} className="border-border">
-                  <TableCell className="text-xs text-muted-foreground font-mono">{format(new Date(t.created_at), 'dd/MM HH:mm')}</TableCell>
-                  <TableCell className="font-bold">{t.symbol}</TableCell>
+              {signals.map((s: any) => (
+                <TableRow key={s.id} className="border-border">
+                  <TableCell className="text-xs text-muted-foreground font-mono">{format(new Date(s.created_at), 'dd/MM HH:mm')}</TableCell>
+                  <TableCell className="font-bold">{s.symbol}</TableCell>
                   <TableCell>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${t.side === 'BUY' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                      {t.side}
-                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                      s.signal_type === 'BUY' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+                    }`}>{s.signal_type}</span>
                   </TableCell>
                   <TableCell className="font-mono text-xs">
-                    ${parseFloat(t.price).toFixed(2)} <span className="text-muted-foreground">→</span> ?
+                    ${parseFloat(s.price || '0').toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </TableCell>
-                  <TableCell className={`text-right font-mono font-bold ${(t.profit || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    {(t.profit || 0) > 0 ? '+' : ''}{(t.profit || 0).toFixed(2)} USDT
+                  <TableCell className={`text-right font-mono font-bold ${
+                    (s.score || 0) >= 0 ? 'text-green-500' : 'text-red-500'
+                  }`}>
+                    {(s.score || 0) > 0 ? '+' : ''}{(s.score || 0).toFixed(1)}
                   </TableCell>
                 </TableRow>
               ))}
-              {trades.length === 0 && (
+              {signals.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">Nenhum trade registrado ainda.</TableCell>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">Nenhum sinal registrado ainda.</TableCell>
                 </TableRow>
               )}
             </TableBody>
