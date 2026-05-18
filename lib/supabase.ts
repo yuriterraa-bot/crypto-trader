@@ -108,7 +108,9 @@ ADD COLUMN IF NOT EXISTS use_trailing_stop BOOLEAN DEFAULT false,
 ADD COLUMN IF NOT EXISTS use_break_even BOOLEAN DEFAULT true,
 ADD COLUMN IF NOT EXISTS break_even_rr DECIMAL DEFAULT 1.0,
 ADD COLUMN IF NOT EXISTS daily_loss_limit_percent DECIMAL DEFAULT 5.0,
-ADD COLUMN IF NOT EXISTS partial_close_levels JSONB DEFAULT '[{"rr":1,"percent":30},{"rr":2,"percent":40}]'::jsonb;
+ADD COLUMN IF NOT EXISTS partial_close_levels JSONB DEFAULT '[{"rr":1,"percent":30},{"rr":2,"percent":40}]'::jsonb,
+ADD COLUMN IF NOT EXISTS always_in_market BOOLEAN DEFAULT false,
+ADD COLUMN IF NOT EXISTS leverage INTEGER DEFAULT 3;
 
 
 ALTER TABLE ai_analysis ENABLE ROW LEVEL SECURITY;  

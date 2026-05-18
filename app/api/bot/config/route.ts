@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       // Remove campos indefinidos para não sobrescrever com null
       const updatePayload: any = { updated_at: new Date().toISOString() };
       
-      const allowedKeys = ['is_running', 'is_paper_trade', 'risk_per_trade', 'max_positions', 'strategy_config', 'timeframe', 'session_filter', 'use_mtf'];
+      const allowedKeys = ['is_running', 'is_paper_trade', 'risk_per_trade', 'max_positions', 'strategy_config', 'timeframe', 'session_filter', 'use_mtf', 'always_in_market', 'leverage'];
       allowedKeys.forEach(key => {
         if (body[key] !== undefined) {
           if (key === 'is_running' || key === 'is_paper_trade') {

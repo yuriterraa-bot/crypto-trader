@@ -15,6 +15,7 @@ import RiskManagerPanel from './RiskManagerPanel';
 import TimeframeSelector from './TimeframeSelector';
 import PerformanceDashboard from './PerformanceDashboard';
 import OpenPositions from './OpenPositions';
+import BotAnalysisPanel from './BotAnalysisPanel';
 
 export default function Dashboard() {
   return (
@@ -27,12 +28,17 @@ export default function Dashboard() {
         {/* Linha 1: Métricas */}
         <MetricCards />
 
-        {/* Linha 2: Sinais em Tempo Real (Destaque) */}
+        {/* Linha 2: Sinais em Tempo Real */}
         <div className="grid gap-6 grid-cols-1">
           <SignalPanel />
         </div>
 
-        {/* Linha Nova: Performance Analytics */}
+        {/* Linha Análise Bot: Always-In Market + Breakdown */}
+        <div className="grid gap-6 grid-cols-1">
+          <BotAnalysisPanel />
+        </div>
+
+        {/* Linha 2b: Performance Analytics */}
         <div className="grid gap-6 grid-cols-1 pt-4 pb-2">
           <PerformanceDashboard />
         </div>

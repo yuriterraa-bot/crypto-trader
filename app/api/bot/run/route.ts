@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { fetchCandles, getBalance, getPositions } from '@/lib/binance';
+import { fetchCandles, getBalance, getPositions, openPosition, closePosition, calculateQuantity } from '@/lib/binance';
 import { runConfluenceEngine } from '@/lib/strategies/confluenceEngine';
 import { calculateRisk } from '@/lib/strategies/riskManager';
+import { alwaysInMarketStrategy } from '@/lib/strategies/alwaysInMarket';
 import { BotConfig, Signal } from '@/types';
 import { fetchNews, analyzeNewsSentiment } from '@/lib/news/newsService';
 import { analyzeMarket } from '@/lib/ai/aiAnalyst';
@@ -266,6 +267,72 @@ export async function POST(request: Request) {
       }
 
       results.push({ symbol, score, techSignal, finalRecommendation, action, risk: riskResult, ai: aiResult, sessionAllowed, breakdown });
+
+      // ── ALWAYS-IN MARKET ─────────────────────────────────────────────
+      if (config.always_in_market) {
+        try {
+          const aimResult = alwaysInMarketStrategy(klines);
+
+          // Detectar posição atual neste símbolo
+          const openPos = positionsData.find(
+            (p: any) => p.symbol === symbol && Math.abs(parseFloat(p.positionAmt)) > 0
+          );
+          const currentSide = openPos
+            ? (parseFloat(openPos.positionAmt) > 0 ? 'LONG' : 'SHORT')
+            : null;
+
+          let aimAction: 'open' | 'reverse' | 'hold' = 'hold';
+
+          if (!currentSide) {
+            aimAction = 'open'; // Sem posição: abrir
+          } else if (currentSide !== aimResult.direction) {
+            aimAction = 'reverse'; // Direção mudou: reverter
+          }
+          // Mesma direção → hold
+
+          const aimSide: 'BUY' | 'SELL' = aimResult.direction === 'LONG' ? 'BUY' : 'SELL';
+
+          // Registrar no log independente da execução
+          await supabase.from('signals').insert([{
+            symbol,
+            strategy: 'AlwaysInMarket',
+            signal_type: aimSide,
+            price: klines[klines.length - 1].close,
+            score: aimResult.score,
+            breakdown: aimResult.reasons.map(r => ({ indicator: r, contribution: 0, signal: aimResult.direction }))
+          }]).catch(() => {});
+
+          // Execução real apenas fora do paper trade
+          if (!config.is_paper_trade && aimAction !== 'hold') {
+            const leverage = config.leverage || 3;
+
+            // Se REVERSE: fechar posição atual primeiro
+            if (aimAction === 'reverse' && openPos) {
+              const closeSide: 'BUY' | 'SELL' = parseFloat(openPos.positionAmt) > 0 ? 'SELL' : 'BUY';
+              await closePosition(symbol, closeSide).catch(e =>
+                console.error(`AIM closePosition error: ${e.message}`)
+              );
+            }
+
+            // Abrir nova posição com 95% do saldo
+            const qty = calculateQuantity(usdtBalance * 0.95, klines[klines.length - 1].close, symbol);
+            if (qty > 0) {
+              await openPosition(symbol, aimSide, qty, leverage).catch(e =>
+                console.error(`AIM openPosition error: ${e.message}`)
+              );
+            }
+          }
+
+          // Adicionar AIM result ao resultado do símbolo
+          const lastResult = results[results.length - 1];
+          if (lastResult) {
+            lastResult.aim = { ...aimResult, action: aimAction, currentSide };
+          }
+        } catch (aimErr: any) {
+          console.error('AIM strategy error:', aimErr.message);
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────
     }
 
     // Auto-reagendar se timeframe < 5m

@@ -170,3 +170,69 @@ export const createRawOrder = async (params: Record<string, any>) => {
     throw error;
   }
 };
+
+/**
+ * Fecha uma posição existente usando reduceOnly MARKET order
+ */
+export const closePosition = async (symbol: string, side: 'BUY' | 'SELL') => {
+  const timestamp = Date.now();
+  const queryString = createQueryString({ symbol, side, type: 'MARKET', reduceOnly: 'true', timestamp });
+  const signature = generateSignature(queryString);
+  try {
+    const response = await api.post(`/fapi/v1/order?${queryString}&signature=${signature}`);
+    return response.data;
+  } catch (error) {
+    console.error('Binance API Error (closePosition):', error);
+    throw error;
+  }
+};
+
+/**
+ * Abre uma nova posição MARKET com alavancagem
+ */
+export const openPosition = async (
+  symbol: string,
+  side: 'BUY' | 'SELL',
+  quantity: number,
+  leverage: number = 3
+) => {
+  // Definir alavancagem primeiro
+  try {
+    await setLeverage(symbol, leverage);
+  } catch (e) {
+    console.warn('setLeverage warning:', e);
+  }
+
+  const timestamp = Date.now();
+  const queryString = createQueryString({
+    symbol,
+    side,
+    type: 'MARKET',
+    quantity: quantity.toFixed(3),
+    timestamp,
+  });
+  const signature = generateSignature(queryString);
+
+  try {
+    const response = await api.post(`/fapi/v1/order?${queryString}&signature=${signature}`);
+    return response.data;
+  } catch (error) {
+    console.error('Binance API Error (openPosition):', error);
+    throw error;
+  }
+};
+
+/**
+ * Calcula a quantidade de contratos para um dado valor USDT e preço
+ */
+export const calculateQuantity = (
+  usdtAmount: number,
+  price: number,
+  symbol: string
+): number => {
+  const raw = usdtAmount / price;
+  if (symbol.includes('BTC')) return Math.floor(raw * 1000) / 1000;   // 3 casas decimais
+  if (symbol.includes('ETH')) return Math.floor(raw * 100) / 100;     // 2 casas decimais
+  return Math.floor(raw * 10) / 10;                                    // 1 casa decimal
+};
+

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { BotConfig, StrategyConfig } from '@/types';
 import { Settings2, Save, BarChart3, TrendingUp, Layers, Compass, Zap, Target } from 'lucide-react';
@@ -37,6 +38,8 @@ export default function StrategyPanel() {
   const [strategy, setStrategy] = useState<StrategyConfig>(defaultConfig);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [alwaysInMarket, setAlwaysInMarket] = useState(false);
+  const [leverage, setLeverage] = useState(3);
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -47,6 +50,8 @@ export default function StrategyPanel() {
           if (data.strategy_config) {
             setStrategy(data.strategy_config);
           }
+          if (data.always_in_market !== undefined) setAlwaysInMarket(Boolean(data.always_in_market));
+          if (data.leverage) setLeverage(Number(data.leverage));
         }
       } catch (error) {
         console.error('Failed to fetch bot config:', error);
@@ -81,7 +86,9 @@ export default function StrategyPanel() {
             rr_ratio: strategy.risk.rr_ratio, 
             atr_multiplier: 2 
           }
-        }
+        },
+        always_in_market: alwaysInMarket,
+        leverage,
       };
       
       const { data } = await axios.post('/api/bot/config', payload);
@@ -254,6 +261,59 @@ export default function StrategyPanel() {
             </div>
           </div>
         </div>
+
+          {/* ── ALWAYS-IN MARKET ── */}
+          <div className="space-y-4 border border-orange-500/30 rounded-xl p-4 bg-orange-500/5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-orange-500/20">
+                  <Zap className="h-5 w-5 text-orange-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm">Modo Always-In Market</span>
+                    {alwaysInMarket && (
+                      <Badge className="text-[10px] px-1.5 py-0 h-4 bg-orange-500/20 text-orange-400 border border-orange-500/30 uppercase font-bold">
+                        Sempre Operando
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Bot sempre terá uma posição aberta (LONG ou SHORT)</p>
+                </div>
+              </div>
+              <label className="flex items-center cursor-pointer">
+                <div className={`w-11 h-6 rounded-full relative transition-colors ${alwaysInMarket ? 'bg-orange-500' : 'bg-muted'}`}>
+                  <input type="checkbox" className="sr-only" checked={alwaysInMarket} onChange={e => setAlwaysInMarket(e.target.checked)} />
+                  <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all ${alwaysInMarket ? 'left-5' : 'left-0.5'}`}></div>
+                </div>
+              </label>
+            </div>
+
+            {alwaysInMarket && (
+              <>
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-orange-500/10 border border-orange-500/20">
+                  <span className="text-orange-400 text-sm">⚠️</span>
+                  <span className="text-xs text-orange-300">Bot sempre terá uma posição aberta. Use com cautela em modo real.</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm font-semibold">Alavancagem AIM</span>
+                    <span className="text-sm font-black text-orange-400">{leverage}x</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="20" step="1"
+                    value={leverage}
+                    onChange={e => setLeverage(parseInt(e.target.value))}
+                    className="w-full h-1.5 rounded-lg appearance-none cursor-pointer bg-orange-500/30 accent-orange-500"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>1x (mínimo)</span>
+                    <span>20x (máximo)</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
       </CardContent>
       <CardFooter className="flex justify-end border-t border-border/50 p-4 bg-secondary/10">
