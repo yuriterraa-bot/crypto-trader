@@ -34,7 +34,7 @@ export async function GET() {
     console.log('[POSITIONS] Abertas reais:', openPositions.length);
     if (openPositions.length > 0) {
       openPositions.forEach((p: any) =>
-        console.log(`  ${p.symbol}: amt=${p.positionAmt} entry=${p.entryPrice} pnl=${p.unrealizedProfit}`)
+        console.log(`  ${p.symbol}: amt=${p.positionAmt} entry=${p.entryPrice} pnl=${p.unRealizedProfit} mark=${p.markPrice}`)
       );
     }
 
