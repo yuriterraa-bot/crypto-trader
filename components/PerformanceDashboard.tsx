@@ -77,19 +77,6 @@ export default function PerformanceDashboard() {
   if (loading) return <div className="p-4 text-muted-foreground animate-pulse">Carregando métricas de performance...</div>;
   if (!mounted) return null;
 
-      date: format(new Date(t.created_at), 'dd/MM HH:mm')
-    };
-  });
-
-  // Best/Worst
-  const sortedTrades = [...trades].sort((a, b) => (b.profit || 0) - (a.profit || 0));
-  const bestTrade = sortedTrades.length > 0 ? sortedTrades[0].profit : 0;
-  const worstTrade = sortedTrades.length > 0 ? sortedTrades[sortedTrades.length - 1].profit : 0;
-
-  if (loading) return <div className="p-4 text-muted-foreground animate-pulse">Carregando métricas de performance...</div>;
-
-  if (!mounted) return null;
-
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
