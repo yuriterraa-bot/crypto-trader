@@ -40,6 +40,10 @@ export default function StrategyPanel() {
   const [saving, setSaving] = useState(false);
   const [alwaysInMarket, setAlwaysInMarket] = useState(false);
   const [leverage, setLeverage] = useState(3);
+  const [stopLoss, setStopLoss] = useState(1.0);
+  const [takeProfit, setTakeProfit] = useState(2.0);
+  const [maxDuration, setMaxDuration] = useState(30);
+  const [savingScalping, setSavingScalping] = useState(false);
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -52,6 +56,9 @@ export default function StrategyPanel() {
           }
           if (data.always_in_market !== undefined) setAlwaysInMarket(Boolean(data.always_in_market));
           if (data.leverage) setLeverage(Number(data.leverage));
+          if (data.stop_loss_percent) setStopLoss(Number(data.stop_loss_percent));
+          if (data.take_profit_percent) setTakeProfit(Number(data.take_profit_percent));
+          if (data.max_trade_duration_minutes) setMaxDuration(Number(data.max_trade_duration_minutes));
         }
       } catch (error) {
         console.error('Failed to fetch bot config:', error);
@@ -89,6 +96,9 @@ export default function StrategyPanel() {
         },
         always_in_market: alwaysInMarket,
         leverage,
+        stop_loss_percent: stopLoss,
+        take_profit_percent: takeProfit,
+        max_trade_duration_minutes: maxDuration,
       };
       
       const { data } = await axios.post('/api/bot/config', payload);
@@ -314,6 +324,69 @@ export default function StrategyPanel() {
               </>
             )}
           </div>
+
+        {/* ── CONFIGURAÇÕES DE SCALPING ── */}
+        <div className="pt-6 border-t border-border/50">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-6 flex items-center">
+            <Target className="h-4 w-4 mr-2 text-indigo-400" /> Configurações de Scalping
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            {/* Stop Loss */}
+            <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-5 space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-bold text-foreground">Stop Loss %</label>
+                <span className="text-lg font-black text-red-400">{stopLoss.toFixed(1)}%</span>
+              </div>
+              <input
+                type="range" min={0.1} max={5.0} step={0.1}
+                value={stopLoss}
+                onChange={e => setStopLoss(parseFloat(e.target.value))}
+                className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-red-500/20 accent-red-500"
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>0.1% (apertado)</span><span>5.0% (largo)</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Fechar se PnL atingir -{stopLoss.toFixed(1)}% (considerando alavancagem)</p>
+            </div>
+
+            {/* Take Profit */}
+            <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-5 space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-bold text-foreground">Take Profit %</label>
+                <span className="text-lg font-black text-green-400">{takeProfit.toFixed(1)}%</span>
+              </div>
+              <input
+                type="range" min={0.1} max={10.0} step={0.1}
+                value={takeProfit}
+                onChange={e => setTakeProfit(parseFloat(e.target.value))}
+                className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-green-500/20 accent-green-500"
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>0.1%</span><span>10.0%</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Fechar ao lucrar +{takeProfit.toFixed(1)}% · RR: 1:{(takeProfit / stopLoss).toFixed(1)}</p>
+            </div>
+
+            {/* Max Duration */}
+            <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-5 space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-bold text-foreground">Tempo máximo</label>
+                <span className="text-lg font-black text-indigo-400">{maxDuration}min</span>
+              </div>
+              <input
+                type="range" min={5} max={120} step={5}
+                value={maxDuration}
+                onChange={e => setMaxDuration(parseInt(e.target.value))}
+                className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-indigo-500/20 accent-indigo-500"
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>5 min</span><span>120 min</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Fechar posição após {maxDuration} min independente de SL/TP</p>
+            </div>
+          </div>
+        </div>
 
       </CardContent>
       <CardFooter className="flex justify-end border-t border-border/50 p-4 bg-secondary/10">

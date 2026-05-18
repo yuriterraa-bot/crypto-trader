@@ -79,13 +79,20 @@ export async function POST(request: Request) {
       // Remove campos indefinidos para não sobrescrever com null
       const updatePayload: any = { updated_at: new Date().toISOString() };
       
-      const allowedKeys = ['is_running', 'is_paper_trade', 'risk_per_trade', 'max_positions', 'strategy_config', 'timeframe', 'session_filter', 'use_mtf', 'always_in_market', 'leverage'];
+      const allowedKeys = [
+        'is_running', 'is_paper_trade', 'risk_per_trade', 'max_positions',
+        'strategy_config', 'timeframe', 'session_filter', 'use_mtf',
+        'always_in_market', 'leverage',
+        'stop_loss_percent', 'take_profit_percent', 'max_trade_duration_minutes',
+      ];
       allowedKeys.forEach(key => {
         if (body[key] !== undefined) {
-          if (key === 'is_running' || key === 'is_paper_trade' || key === 'always_in_market') {
+          if (['is_running', 'is_paper_trade', 'always_in_market'].includes(key)) {
             updatePayload[key] = Boolean(body[key]);
-          } else if (key === 'leverage') {
+          } else if (['leverage', 'max_trade_duration_minutes'].includes(key)) {
             updatePayload[key] = parseInt(String(body[key]), 10);
+          } else if (['stop_loss_percent', 'take_profit_percent', 'risk_per_trade'].includes(key)) {
+            updatePayload[key] = parseFloat(String(body[key]));
           } else {
             updatePayload[key] = body[key];
           }

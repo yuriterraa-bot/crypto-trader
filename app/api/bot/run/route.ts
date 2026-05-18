@@ -1,421 +1,274 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { fetchCandles, getBalance, getPositions, openPosition, closePosition, calculateQuantity } from '@/lib/binance';
-import { runConfluenceEngine } from '@/lib/strategies/confluenceEngine';
-import { calculateRisk } from '@/lib/strategies/riskManager';
+import {
+  fetchCandles, getBalance, getPositions,
+  openPosition, closePosition, calculateQuantity,
+  setLeverage, createRawOrder
+} from '@/lib/binance';
 import { alwaysInMarketStrategy } from '@/lib/strategies/alwaysInMarket';
-import { BotConfig, Signal } from '@/types';
-import { fetchNews, analyzeNewsSentiment } from '@/lib/news/newsService';
-import { analyzeMarket } from '@/lib/ai/aiAnalyst';
-import { analyzeMultiTimeframe } from '@/lib/analysis/multiTimeframe';
-import { getCurrentSession } from '@/lib/analysis/sessionFilter';
-import { calculateVWAP } from '@/lib/indicators/vwap';
-import { calculateVolumeProfile } from '@/lib/indicators/volumeProfile';
 
 export async function POST(request: Request) {
   try {
-    // Check if a specific symbol was passed
-    let reqSymbol = null;
+    let reqSymbol: string | null = null;
     try {
       const body = await request.json();
-      if (body && body.symbol) reqSymbol = body.symbol;
-    } catch (e) {
-      // Ignore JSON parse errors for empty body
-    }
+      if (body?.symbol) reqSymbol = body.symbol;
+    } catch {}
 
-    // 1. Get bot config (sempre pegar a linha mais recente)
-    const { data: configRows, error: configError } = await supabase
+    // ── 1. Carregar config ──────────────────────────────────────────
+    const { data: configRows } = await supabase
       .from('bot_config')
       .select('*')
       .order('updated_at', { ascending: false })
       .limit(1);
 
-    if (configError) throw configError;
-
-    const defaultStrategyConfig = {
-      indicators: {
-        ma: { active: true, weight: 5 },
-        stochastic: { active: true, weight: 3 },
-        fibonacci: { active: true, weight: 4 },
-        didi: { active: true, weight: 4 },
-        nadaraya: { active: true, weight: 6 },
-        smc: { active: true, weight: 7 },
-        mtf: { active: true, weight: 5 }
-      },
-      thresholds: { buy: 60, sell: 60 },
-      risk: { per_trade: 1.0, rr_ratio: 2, atr_multiplier: 2 }
+    const config = (configRows && configRows.length > 0) ? configRows[0] : {
+      is_running: true, is_paper_trade: false, leverage: 3,
+      stop_loss_percent: 1.0, take_profit_percent: 2.0,
+      max_trade_duration_minutes: 30, always_in_market: true,
     };
 
-    // Se não há config, usar padrão e continuar
-    const config = (configRows && configRows.length > 0) 
-      ? configRows[0] 
-      : {
-          is_running: true,
-          is_paper_trade: true,
-          risk_per_trade: 1.0,
-          max_positions: 3,
-          timeframe: '15m',
-          strategy_config: defaultStrategyConfig
-        };
+    console.log('=== SCALPING BOT CONFIG ===');
+    console.log('is_running:', config.is_running, '| paper:', config.is_paper_trade);
+    console.log('SL:', config.stop_loss_percent, '% | TP:', config.take_profit_percent, '% | MaxDur:', config.max_trade_duration_minutes, 'min');
 
-    // Se strategy_config está vazio no registro, usar padrão
-    const strategyConfig = config.strategy_config && 
-      Object.keys(config.strategy_config).length > 0 
-      ? config.strategy_config 
-      : defaultStrategyConfig;
-
-    // LOG CRÍTICO: estado da config
-    console.log('=== BOT CONFIG ===');
-    console.log('is_running:', config.is_running);
-    console.log('is_paper_trade:', config.is_paper_trade);
-    console.log('always_in_market:', config.always_in_market);
-    console.log('leverage:', config.leverage);
-
-    // Só parar se bot não estiver rodando
     if (!config.is_running) {
-      return NextResponse.json({ 
-        status: 'stopped', 
-        message: 'Bot pausado. Clique em Iniciar Bot.' 
-      });
+      return NextResponse.json({ status: 'stopped', message: 'Bot pausado.' });
     }
 
-    const timeframe = config.timeframe || '15m';
-
-    // 2. Fetch required account info
-    const [balanceData, positionsData] = await Promise.all([
-      getBalance(),
-      getPositions()
-    ]);
-    
-    const usdtBalance = parseFloat(balanceData.find((b: any) => b.asset === 'USDT')?.availableBalance || '0');
-    const activePositionsCount = positionsData.filter((pos: any) => parseFloat(pos.positionAmt) !== 0).length;
-
-    let news: any = null;
-    try {
-      news = await fetchNews();
-    } catch(e: any) {
-      console.error('fetchNews failed:', e.message);
-      news = { finalSentiment: { btc: 0, eth: 0 }, headlines: [], 
-        fearGreedIndex: 50, fearGreedLabel: 'Neutro', 
-        fearGreedSentiment: 0, trending: { btc: false, eth: false } };
-    }
-    
-    let sentimentScores: any = { btc: 0, eth: 0 };
-    try {
-      sentimentScores = analyzeNewsSentiment(news);
-    } catch(e: any) {
-      console.error('analyzeNewsSentiment failed:', e.message);
-    }
-
-    // Mock Fear & Greed for now, in a real app this would fetch from an API like alternative.me
-    const fearAndGreed = 50;
-
-    // 3. Process symbols
     const symbols = reqSymbol ? [reqSymbol] : ['BTCUSDT', 'ETHUSDT'];
     const results: any[] = [];
 
-    const { session, confidenceMultiplier } = getCurrentSession();
+    // ── 2. Buscar saldo e posições atuais ───────────────────────────
+    let usdtBalance = 1000;
+    let positionsData: any[] = [];
+    try {
+      const balData = await getBalance();
+      const usdt = Array.isArray(balData) ? balData.find((a: any) => a.asset === 'USDT') : null;
+      usdtBalance = parseFloat(usdt?.availableBalance || usdt?.walletBalance || '1000');
+    } catch (e: any) { console.error('[BOT] balance error:', e.message); }
+
+    try {
+      positionsData = await getPositions();
+    } catch (e: any) { console.error('[BOT] positions error:', e.message); }
 
     for (const symbol of symbols) {
-      // Get klines
-      const klines = await fetchCandles(symbol, timeframe, 200);
-      
-      // Advanced Metrics
-      let mtfAlignment = 'MIXED';
+      // ── 3. Buscar candles para análise ────────────────────────────
+      let klines: any[] = [];
       try {
-        if (config.use_mtf !== false) {
-          const mtf = await analyzeMultiTimeframe(symbol, timeframe);
-          mtfAlignment = mtf.trendAlignment;
+        klines = await fetchCandles(symbol, config.timeframe || '5m', 100);
+      } catch (e: any) {
+        console.error(`[BOT] fetchCandles(${symbol}) error:`, e.message);
+        results.push({ symbol, action: 'ERROR', error: e.message });
+        continue;
+      }
+
+      const currentPrice = parseFloat(klines[klines.length - 1].close);
+
+      // ── 4. Verificar posição aberta e checar SL/TP/Timeout ────────
+      const openPos = positionsData.find(
+        (p: any) => p.symbol === symbol && Math.abs(parseFloat(p.positionAmt || '0')) > 0
+      );
+
+      if (openPos) {
+        const posAmt = parseFloat(openPos.positionAmt);
+        const currentSide = posAmt > 0 ? 'LONG' : 'SHORT';
+        const entryPrice = parseFloat(openPos.entryPrice || openPos.avgCost || '0');
+        const leverage = config.leverage || 3;
+
+        // PnL em %
+        const pnlPercent = currentSide === 'LONG'
+          ? (currentPrice - entryPrice) / entryPrice * 100 * leverage
+          : (entryPrice - currentPrice) / entryPrice * 100 * leverage;
+
+        const pnlUSDT = parseFloat(openPos.unrealizedProfit || openPos.unRealizedProfit || '0');
+
+        console.log(`[SCALPING] ${symbol} ${currentSide} | entry:${entryPrice} | price:${currentPrice} | PnL:${pnlPercent.toFixed(2)}%`);
+
+        // Buscar trade aberto no Supabase
+        const { data: openTrade } = await supabase
+          .from('trades')
+          .select('*')
+          .eq('symbol', symbol)
+          .eq('status', 'OPEN')
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        const trade = openTrade?.[0];
+        const openTime = trade?.open_time ? new Date(trade.open_time).getTime() : Date.now();
+        const durationMinutes = (Date.now() - openTime) / 60000;
+
+        const sl = config.stop_loss_percent || 1.0;
+        const tp = config.take_profit_percent || 2.0;
+        const maxDur = config.max_trade_duration_minutes || 30;
+
+        let closeReason: 'WIN' | 'LOSS' | 'TIMEOUT' | null = null;
+
+        if (pnlPercent >= tp) {
+          closeReason = 'WIN';
+          console.log(`[SCALPING] TP atingido: +${pnlPercent.toFixed(2)}% | ${symbol}`);
+        } else if (pnlPercent <= -sl) {
+          closeReason = 'LOSS';
+          console.log(`[SCALPING] SL atingido: ${pnlPercent.toFixed(2)}% | ${symbol}`);
+        } else if (durationMinutes >= maxDur) {
+          closeReason = 'TIMEOUT';
+          console.log(`[SCALPING] Timeout: ${durationMinutes.toFixed(1)} min | ${symbol}`);
         }
-      } catch(e: any) {
-        console.error('MTF failed:', e.message);
-        mtfAlignment = 'MIXED';
-      }
 
-      let vwapData = null;
-      try {
-        vwapData = calculateVWAP(klines);
-      } catch(e: any) {
-        console.error('VWAP failed:', e.message);
-      }
-
-      let volumeProfile = null;
-      try {
-        volumeProfile = calculateVolumeProfile(klines);
-      } catch(e: any) {
-        console.error('VolumeProfile failed:', e.message);
-      }
-
-      // Session Filter logic
-      const sessionFilters = config.session_filter || { asia: true, london: true, ny: true };
-      let sessionAllowed = true;
-      if (session === 'ASIA' && !sessionFilters.asia) sessionAllowed = false;
-      if (session === 'LONDON' && !sessionFilters.london) sessionAllowed = false;
-      if (session === 'NEW_YORK' && !sessionFilters.ny) sessionAllowed = false;
-      if (session === 'OVERLAP_LONDON_NY' && (!sessionFilters.london || !sessionFilters.ny)) sessionAllowed = false;
-
-      // Run confluence engine
-      let score = 0, techSignal = 'NEUTRAL', breakdown: any = [];
-      try {
-        const result = runConfluenceEngine(
-          klines, strategyConfig, mtfAlignment, confidenceMultiplier
-        );
-        score = result.score;
-        techSignal = result.signal;
-        breakdown = result.breakdown;
-        
-        console.log('=== BREAKDOWN DETALHADO ===');
-        console.log(JSON.stringify(breakdown, null, 2));
-        console.log('Score final:', score);
-        console.log('Candles recebidos:', klines.length);
-        console.log('Último candle:', JSON.stringify(klines[klines.length-1]));
-      } catch(e: any) {
-        console.error('ConfluenceEngine failed:', e.message);
-      }
-      let action = 'none';
-      let riskResult = null;
-      let finalRecommendation = techSignal;
-      let aiResult = null;
-      const currencyKey = symbol.includes('BTC') ? 'btc' : 'eth';
-      const newsSentiment = (sentimentScores as any)[currencyKey] || 0;
-
-      // Integration: Check Technical + News + AI
-      if (Math.abs(score) > 40 && sessionAllowed) {
-        // Only run AI if score is strong enough
-        if (Math.abs(score) > 60) {
-          
-          // Fetch last 3 trades
-          const { data: lastTrades } = await supabase.from('trades').select('side, status').eq('symbol', symbol).order('created_at', { ascending: false }).limit(3);
-
-          aiResult = await analyzeMarket({
-            symbol,
-            timeframe,
-            currentPrice: klines[klines.length - 1].close,
-            recentCandles: klines.slice(-10),
-            confluenceScore: score,
-            technicalSignals: breakdown,
-            newsSentiment,
-            fearAndGreed,
-            mtfAlignment,
-            session,
-            vwapBias: vwapData?.bias || 'NEUTRAL',
-            volumeProfile: volumeProfile || {},
-            lastTrades: lastTrades || []
-          });
-          
-          // Save to Supabase
-          await supabase.from('ai_analysis').insert([{
-            symbol,
-            recommendation: aiResult.recommendation,
-            confidence: aiResult.confidence,
-            reasoning: aiResult.reasoning,
-            risks: aiResult.risks,
-            confluence_score: score,
-            news_sentiment: newsSentiment
-          }]);
-
-          // Combine: score (60%) + news (20%) + AI (20%)
-          // Map AI recommendation to score -100 to 100
-          const aiScoreMap: Record<string, number> = {
-            'STRONG_BUY': 100, 'BUY': 50, 'NEUTRAL': 0, 'SELL': -50, 'STRONG_SELL': -100
-          };
-          const aiScore = aiScoreMap[aiResult.recommendation] || 0;
-          const newsScore = newsSentiment * 100;
-
-          const combinedScore = (score * 0.6) + (newsScore * 0.2) + (aiScore * 0.2);
-
-          if (combinedScore > strategyConfig.thresholds.buy) {
-             finalRecommendation = 'BUY';
-          } else if (combinedScore < -strategyConfig.thresholds.sell) {
-             finalRecommendation = 'SELL';
-          } else {
-             finalRecommendation = 'NEUTRAL';
-          }
-        }
-      } else if (!sessionAllowed) {
-        finalRecommendation = 'NEUTRAL'; // Blocked by session
-      }
-
-      if (finalRecommendation === 'BUY' || finalRecommendation === 'SELL') {
-        // Run risk manager
-        riskResult = calculateRisk(
-          klines, 
-          strategyConfig, 
-          usdtBalance, 
-          activePositionsCount, 
-          config.max_positions, 
-          finalRecommendation
-        );
-
-        if (riskResult.canTrade) {
-          action = config.is_paper_trade ? 'paper_trade' : 'live_trade';
-          
-          // Save signal to database
-          const signalToSave: Signal = {
-            symbol,
-            strategy: aiResult ? 'AI_Confluence' : 'ConfluenceEngine',
-            signal_type: finalRecommendation,
-            price: klines[klines.length - 1].close,
-            score,
-            breakdown,
-          };
-
-          await supabase.from('signals').insert([signalToSave]);
-          
-          await supabase.from('trades').insert([{
-            symbol,
-            side: finalRecommendation === 'BUY' ? 'BUY' : 'SELL',
-            quantity: riskResult?.positionSize || 0,
-            price: klines[klines.length - 1].close,
-            status: config.is_paper_trade ? 'PAPER' : 'FILLED',
-            strategy_id: null,
-            created_at: new Date().toISOString()
-          }]);
-        }
-      }
-
-      results.push({ symbol, score, techSignal, finalRecommendation, action, risk: riskResult, ai: aiResult, sessionAllowed, breakdown });
-
-      // ── ALWAYS-IN MARKET ─────────────────────────────────────────────
-      console.log(`[AIM] always_in_market=${config.always_in_market}, symbol=${symbol}, paper=${config.is_paper_trade}`);
-      if (config.always_in_market) {
-        try {
-          const aimResult = alwaysInMarketStrategy(klines);
-          console.log('[AIM] Result:', JSON.stringify(aimResult));
-
-          const openPos = positionsData.find(
-            (p: any) => p.symbol === symbol && Math.abs(parseFloat(p.positionAmt)) > 0
-          );
-          console.log('[AIM] Open position:', JSON.stringify(openPos || null));
-
-          const side: 'BUY' | 'SELL' = aimResult.direction === 'LONG' ? 'BUY' : 'SELL';
-          const currentPrice = klines[klines.length - 1].close;
-          const qty = calculateQuantity(usdtBalance * 0.95, currentPrice, symbol);
-
-          let aimAction = 'none';
-          let orderResult: any = null;
-
-          if (!openPos || Math.abs(parseFloat(openPos.positionAmt)) === 0) {
-            // Sem posição: abrir sempre
-            aimAction = 'OPEN';
-            console.log(`[AIM] Abrindo ${side} ${qty} ${symbol}`);
-
-            if (!config.is_paper_trade) {
-              try {
-                orderResult = await openPosition(symbol, side, qty, config.leverage || 3);
-                console.log('[AIM] Ordem executada:', JSON.stringify(orderResult));
-              } catch (e: any) {
-                console.error('[AIM] Erro ao abrir posição:', e.response?.data || e.message);
-                aimAction = 'ERROR';
-              }
-            }
-
-          } else {
-            const currentSide = parseFloat(openPos.positionAmt) > 0 ? 'LONG' : 'SHORT';
-
-            if (currentSide !== aimResult.direction) {
-              // Direção diferente: reverter posição
-              aimAction = 'REVERSE';
-              console.log(`[AIM] Revertendo ${currentSide} → ${aimResult.direction}`);
-
-              if (!config.is_paper_trade) {
-                try {
-                  const closeSide: 'BUY' | 'SELL' = currentSide === 'LONG' ? 'SELL' : 'BUY';
-                  await closePosition(symbol, closeSide);
-                  console.log('[AIM] Posição fechada');
-                  await new Promise(r => setTimeout(r, 500));
-                  orderResult = await openPosition(symbol, side, qty, config.leverage || 3);
-                  console.log('[AIM] Nova posição aberta:', JSON.stringify(orderResult));
-                } catch (e: any) {
-                  console.error('[AIM] Erro ao reverter:', e.response?.data || e.message);
-                  aimAction = 'ERROR';
-                }
-              }
-            } else {
-              aimAction = 'HOLD';
-              console.log(`[AIM] Mantendo ${currentSide} para ${symbol}`);
+        if (closeReason) {
+          // Fechar posição
+          const closeSide: 'BUY' | 'SELL' = currentSide === 'LONG' ? 'SELL' : 'BUY';
+          let closeResult = null;
+          if (!config.is_paper_trade) {
+            try {
+              closeResult = await closePosition(symbol, closeSide);
+              console.log('[SCALPING] Posição fechada:', JSON.stringify(closeResult));
+            } catch (e: any) {
+              console.error('[SCALPING] Erro ao fechar:', e.response?.data || e.message);
             }
           }
 
-          // Registrar sinal e trade apenas se houve ação
-          if (aimAction === 'OPEN' || aimAction === 'REVERSE') {
-            await supabase.from('signals').insert([{
-              symbol,
-              strategy: 'AlwaysInMarket',
-              signal_type: side,
-              price: currentPrice,
-              score: aimResult.score,
-              breakdown: aimResult.reasons?.map((r: string) => ({ indicator: r, contribution: 0, signal: r })) || []
-            }]).then(() => console.log('[AIM] Signal saved'))
-              .catch((e: any) => console.error('[AIM] Signal error:', e.message));
-
-            await supabase.from('trades').insert([{
-              symbol,
-              side,
-              quantity: qty,
-              price: currentPrice,
-              status: config.is_paper_trade ? 'PAPER' : 'FILLED',
-              created_at: new Date().toISOString()
-            }]).then(() => console.log('[AIM] Trade saved'))
-              .catch((e: any) => console.error('[AIM] Trade error:', e.message));
+          // Atualizar trade no Supabase
+          if (trade?.id) {
+            await supabase.from('trades').update({
+              status: closeReason,
+              exit_price: currentPrice,
+              pnl: pnlUSDT,
+              closed_at: new Date().toISOString(),
+            }).eq('id', trade.id);
           }
 
-          // Sobrescrever resultado do símbolo com dados AIM
-          const lastResult = results[results.length - 1];
-          if (lastResult) {
-            lastResult.aim = {
-              ...aimResult,
-              action: aimAction,
-              currentSide: openPos ? (parseFloat(openPos.positionAmt) > 0 ? 'LONG' : 'SHORT') : null,
-              orderResult: orderResult || null,
-            };
-          }
-        } catch (aimErr: any) {
-          console.error('[AIM] Strategy error:', aimErr.message, aimErr.stack?.split('\n')[1]);
+          results.push({
+            symbol, action: `CLOSE_${closeReason}`,
+            pnlPercent: pnlPercent.toFixed(2),
+            pnlUSDT: pnlUSDT.toFixed(4),
+            currentSide, entryPrice, currentPrice, durationMinutes: durationMinutes.toFixed(1),
+          });
+          continue; // Após fechar, não abre nova posição no mesmo ciclo
+        }
+
+        // Posição em andamento — HOLD
+        results.push({
+          symbol, action: 'HOLD',
+          currentSide, entryPrice, currentPrice,
+          pnlPercent: pnlPercent.toFixed(2),
+          pnlUSDT: pnlUSDT.toFixed(4),
+          durationMinutes: durationMinutes.toFixed(1),
+          sl, tp, maxDur,
+        });
+        continue;
+      }
+
+      // ── 5. Sem posição aberta: analisar e abrir nova ───────────────
+      const aimResult = alwaysInMarketStrategy(klines);
+      const side: 'BUY' | 'SELL' = aimResult.direction === 'LONG' ? 'BUY' : 'SELL';
+      const qty = calculateQuantity(usdtBalance * 0.95, currentPrice, symbol);
+      const lev = config.leverage || 3;
+      const sl = config.stop_loss_percent || 1.0;
+      const tp = config.take_profit_percent || 2.0;
+
+      // Calcular preços de SL e TP
+      const slPrice = side === 'BUY'
+        ? currentPrice * (1 - sl / 100 / lev)
+        : currentPrice * (1 + sl / 100 / lev);
+      const tpPrice = side === 'BUY'
+        ? currentPrice * (1 + tp / 100 / lev)
+        : currentPrice * (1 - tp / 100 / lev);
+
+      console.log(`[SCALPING] Abrindo ${side} ${qty} ${symbol} | SL:${slPrice.toFixed(2)} | TP:${tpPrice.toFixed(2)}`);
+
+      let orderResult = null;
+      let openError = null;
+
+      if (!config.is_paper_trade) {
+        try {
+          // Definir alavancagem
+          await setLeverage(symbol, lev).catch(() => {});
+
+          // Ordem de entrada MARKET
+          orderResult = await openPosition(symbol, side, qty, lev);
+          const entryFill = orderResult?.avgPrice || orderResult?.price || currentPrice;
+
+          // Aguardar para garantir que a posição foi aberta
+          await new Promise(r => setTimeout(r, 800));
+
+          // Stop Loss STOP_MARKET
+          const slSide: 'BUY' | 'SELL' = side === 'BUY' ? 'SELL' : 'BUY';
+          const slPriceFixed = parseFloat(slPrice.toFixed(2));
+          const tpPriceFixed = parseFloat(tpPrice.toFixed(2));
+
+          await createRawOrder({
+            symbol, side: slSide,
+            type: 'STOP_MARKET',
+            stopPrice: slPriceFixed,
+            closePosition: 'true',
+            timeInForce: 'GTE_GTC',
+            workingType: 'MARK_PRICE',
+          }).catch((e: any) => console.error('[SCALPING] SL order error:', e.response?.data || e.message));
+
+          // Take Profit TAKE_PROFIT_MARKET
+          await createRawOrder({
+            symbol, side: slSide,
+            type: 'TAKE_PROFIT_MARKET',
+            stopPrice: tpPriceFixed,
+            closePosition: 'true',
+            timeInForce: 'GTE_GTC',
+            workingType: 'MARK_PRICE',
+          }).catch((e: any) => console.error('[SCALPING] TP order error:', e.response?.data || e.message));
+
+          console.log(`[SCALPING] SL/TP colocados | SL:${slPriceFixed} | TP:${tpPriceFixed}`);
+        } catch (e: any) {
+          openError = e.response?.data || e.message;
+          console.error('[SCALPING] Erro ao abrir posição:', openError);
         }
       }
-      // ─────────────────────────────────────────────────────────────────
+
+      // Registrar no Supabase
+      if (!openError) {
+        await supabase.from('trades').insert([{
+          symbol,
+          side,
+          direction: aimResult.direction,
+          quantity: qty,
+          price: currentPrice,
+          entry_price: currentPrice,
+          stop_loss: parseFloat(slPrice.toFixed(2)),
+          take_profit: parseFloat(tpPrice.toFixed(2)),
+          status: 'OPEN',
+          open_time: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        }]).then(() => console.log('[SCALPING] Trade registrado no Supabase'))
+          .catch((e: any) => console.error('[SCALPING] Supabase insert error:', e.message));
+
+        await supabase.from('signals').insert([{
+          symbol,
+          strategy: 'Scalping-AIM',
+          signal_type: side,
+          price: currentPrice,
+          score: aimResult.score,
+          breakdown: aimResult.reasons?.map((r: string) => ({ indicator: r, contribution: 0, signal: r })) || [],
+        }]).catch(() => {});
+      }
+
+      results.push({
+        symbol, action: openError ? 'OPEN_ERROR' : 'OPEN',
+        side, direction: aimResult.direction,
+        confidence: aimResult.confidence,
+        qty, entryPrice: currentPrice,
+        slPrice: parseFloat(slPrice.toFixed(2)),
+        tpPrice: parseFloat(tpPrice.toFixed(2)),
+        reasons: aimResult.reasons,
+        error: openError || null,
+        orderResult: orderResult || null,
+      });
     }
 
-    // Auto-reagendar se timeframe < 5m
-    const tf = config.timeframe || '15m';
-    if (['1m', '3m'].includes(tf) && config.is_running) {
-      const delay = tf === '1m' ? 60000 : 180000;
-      setTimeout(async () => {
-        try {
-          await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/bot/run`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol: 'BTCUSDT' })
-          });
-          await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/bot/run`, {
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol: 'ETHUSDT' })
-          });
-        } catch(e) {}
-      }, delay);
-    }
-
-    return NextResponse.json({ 
-      status: 'success', 
-      results: results.map(r => ({
-        ...r,
-        breakdown: r.breakdown || []
-      }))
-    });
+    return NextResponse.json({ status: 'success', results });
   } catch (error: any) {
-    console.error('=== BOT RUN ERROR ===');
-    console.error('Message:', error.message);
-    console.error('Stack:', error.stack);
-    console.error('Response data:', error.response?.data);
-    console.error('Response status:', error.response?.status);
-    return NextResponse.json({ 
+    console.error('=== BOT RUN ERROR ===', error.message, error.stack);
+    return NextResponse.json({
       error: error.message,
-      stack: error.stack?.split('\n').slice(0,5),
-      details: error.response?.data || null
+      details: error.response?.data || null,
     }, { status: 500 });
   }
 }
-
-  

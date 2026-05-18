@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import MetricCards from './MetricCards';
 import SignalPanel from './SignalPanel';
 import OrderTicket from './OrderTicket';
@@ -18,6 +19,29 @@ import OpenPositions from './OpenPositions';
 import BotAnalysisPanel from './BotAnalysisPanel';
 
 export default function Dashboard() {
+  const manageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Polling do manage route a cada 60s para verificar SL/TP
+  useEffect(() => {
+    const runManage = async () => {
+      try {
+        const cfgRes = await fetch('/api/bot/config', { cache: 'no-store' });
+        const cfg = await cfgRes.json();
+        if (!cfg.is_running) return;
+        const res = await fetch('/api/bot/manage', { cache: 'no-store' });
+        const data = await res.json();
+        if (data.managed?.some((m: any) => m.action?.startsWith('CLOSE_'))) {
+          // Forçar refresh dos componentes via evento
+          window.dispatchEvent(new Event('bot-status-changed'));
+        }
+      } catch { /* ignore */ }
+    };
+
+    runManage(); // imediato
+    manageIntervalRef.current = setInterval(runManage, 60000);
+    return () => { if (manageIntervalRef.current) clearInterval(manageIntervalRef.current); };
+  }, []);
+
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
       <SystemStatus />
