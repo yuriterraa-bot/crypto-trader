@@ -1,0 +1,296 @@
+'use client';
+
+import { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  createChart,
+  ColorType,
+  CrosshairMode,
+  IChartApi,
+  ISeriesApi,
+  CandlestickData,
+  LineData,
+} from 'lightweight-charts';
+
+const TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'];
+const SYMBOLS = ['BTCUSDT', 'ETHUSDT'];
+
+export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const ema9Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const ema21Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const ema50Ref = useRef<ISeriesApi<'Line'> | null>(null);
+
+  const [selectedSymbol, setSelectedSymbol] = useState(symbol);
+  const [selectedTf, setSelectedTf] = useState('15m');
+  const [loading, setLoading] = useState(false);
+  const [price, setPrice] = useState(0);
+  const [change, setChange] = useState(0);
+  const [position, setPosition] = useState<any>(null);
+  const [chartReady, setChartReady] = useState(false);
+
+  // ── Inicializar chart (apenas uma vez) ────────────────────────────
+  useEffect(() => {
+    if (!containerRef.current || chartRef.current) return;
+
+    const chart = createChart(containerRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: '#0a0a0f' },
+        textColor: '#94a3b8',
+      },
+      grid: {
+        vertLines: { color: '#1a1a2e' },
+        horzLines: { color: '#1a1a2e' },
+      },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: '#1e1e2e' },
+      timeScale: {
+        borderColor: '#1e1e2e',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      width: containerRef.current.clientWidth,
+      height: 480,
+    });
+
+    candleRef.current = chart.addCandlestickSeries({
+      upColor: '#22c55e', downColor: '#ef4444',
+      borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+      wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+    });
+
+    ema9Ref.current = chart.addLineSeries({ color: '#60a5fa', lineWidth: 1, title: 'EMA9' });
+    ema21Ref.current = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, title: 'EMA21' });
+    ema50Ref.current = chart.addLineSeries({ color: '#a855f7', lineWidth: 1, title: 'EMA50' });
+
+    chartRef.current = chart;
+    setChartReady(true);
+
+    const handleResize = () => {
+      if (containerRef.current) {
+        chart.applyOptions({ width: containerRef.current.clientWidth });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+      chartRef.current = null;
+      candleRef.current = null;
+      ema9Ref.current = null;
+      ema21Ref.current = null;
+      ema50Ref.current = null;
+    };
+  }, []);
+
+  // ── Carregar dados ─────────────────────────────────────────────────
+  const loadData = useCallback(async () => {
+    if (!chartReady || !candleRef.current) return;
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/binance/klines?symbol=${selectedSymbol}&interval=${selectedTf}&limit=200`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const candles: any[] = await res.json();
+      if (!Array.isArray(candles) || candles.length === 0) return;
+
+      // ── Candles ──
+      const candleData: CandlestickData[] = candles.map(c => ({
+        time: Math.floor(c.openTime / 1000) as any,
+        open: c.open, high: c.high, low: c.low, close: c.close,
+      }));
+      candleRef.current!.setData(candleData);
+
+      // ── EMA helper ──
+      const calcEMA = (period: number): LineData[] => {
+        const closes = candles.map(c => c.close);
+        if (closes.length < period) return [];
+        const k = 2 / (period + 1);
+        const result: LineData[] = [];
+        let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+        result.push({ time: Math.floor(candles[period - 1].openTime / 1000) as any, value: ema });
+        for (let i = period; i < closes.length; i++) {
+          ema = closes[i] * k + ema * (1 - k);
+          result.push({ time: Math.floor(candles[i].openTime / 1000) as any, value: ema });
+        }
+        return result;
+      };
+
+      ema9Ref.current?.setData(calcEMA(9));
+      ema21Ref.current?.setData(calcEMA(21));
+      ema50Ref.current?.setData(calcEMA(50));
+      chartRef.current?.timeScale().fitContent();
+
+      // ── Posições abertas como markers ──
+      try {
+        const posRes = await fetch('/api/binance/positions', { cache: 'no-store' });
+        const posData = await posRes.json();
+        const openPositions = Array.isArray(posData)
+          ? posData.filter((p: any) =>
+              p.symbol === selectedSymbol &&
+              Math.abs(parseFloat(p.positionAmt || '0')) > 0.0001
+            )
+          : [];
+
+        setPosition(openPositions[0] || null);
+
+        const lastTime = Math.floor(candles[candles.length - 1].openTime / 1000) as any;
+        const markers = openPositions.map((p: any) => {
+          const isLong = parseFloat(p.positionAmt) > 0;
+          return {
+            time: lastTime,
+            position: isLong ? 'belowBar' : 'aboveBar',
+            color: isLong ? '#22c55e' : '#ef4444',
+            shape: isLong ? 'arrowUp' : 'arrowDown',
+            text: `${isLong ? 'LONG' : 'SHORT'} @ $${parseFloat(p.entryPrice).toFixed(0)}`,
+            size: 2,
+          };
+        });
+        if (markers.length > 0) candleRef.current?.setMarkers(markers as any);
+        else candleRef.current?.setMarkers([]);
+      } catch { /* ignore position fetch errors */ }
+
+      // ── Preço e variação ──
+      const last = candles[candles.length - 1];
+      setPrice(last.close);
+      setChange(((last.close - candles[0].close) / candles[0].close) * 100);
+    } catch (e) {
+      console.error('[TradingChart] loadData error:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [chartReady, selectedSymbol, selectedTf]);
+
+  // Carregar dados quando chart estiver pronto ou parâmetros mudarem
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 30000);
+    return () => clearInterval(interval);
+  }, [loadData]);
+
+  const isLong = position ? parseFloat(position.positionAmt) > 0 : null;
+  const pnl = position
+    ? parseFloat(position.unRealizedProfit || position.unrealizedProfit || '0')
+    : 0;
+
+  return (
+    <div style={{
+      background: '#12121a',
+      border: '1px solid #1e1e2e',
+      borderRadius: '12px',
+      padding: '16px',
+    }}>
+      {/* ── Header ── */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: '12px', flexWrap: 'wrap', gap: '8px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#e2e8f0' }}>
+            📈 {selectedSymbol}
+          </span>
+          {price > 0 && (
+            <>
+              <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#e2e8f0', fontFamily: 'monospace' }}>
+                ${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <span style={{ color: change >= 0 ? '#22c55e' : '#ef4444', fontSize: '13px', fontWeight: 'bold' }}>
+                {change >= 0 ? '+' : ''}{change.toFixed(2)}%
+              </span>
+            </>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Symbol buttons */}
+          {SYMBOLS.map(s => (
+            <button key={s} onClick={() => setSelectedSymbol(s)} style={{
+              padding: '4px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+              background: selectedSymbol === s ? '#6366f1' : '#1e1e2e',
+              color: '#e2e8f0', fontSize: '12px',
+              fontWeight: selectedSymbol === s ? 'bold' : 'normal',
+              transition: 'background 0.15s',
+            }}>
+              {s.replace('USDT', '')}
+            </button>
+          ))}
+
+          <div style={{ width: '1px', height: '20px', background: '#2e2e3e', margin: '0 2px' }} />
+
+          {/* Timeframe buttons */}
+          {TIMEFRAMES.map(tf => (
+            <button key={tf} onClick={() => setSelectedTf(tf)} style={{
+              padding: '3px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+              background: selectedTf === tf ? '#6366f1' : '#1e1e2e',
+              color: '#e2e8f0', fontSize: '11px',
+              fontWeight: selectedTf === tf ? 'bold' : 'normal',
+              transition: 'background 0.15s',
+            }}>
+              {tf}
+            </button>
+          ))}
+
+          {/* Refresh */}
+          <button onClick={loadData} title="Atualizar" style={{
+            padding: '4px 10px', borderRadius: '6px', border: '1px solid #2e2e3e',
+            cursor: 'pointer', background: 'transparent',
+            color: loading ? '#6366f1' : '#94a3b8', fontSize: '14px',
+            transition: 'color 0.15s',
+          }}>
+            ⟳
+          </button>
+        </div>
+      </div>
+
+      {/* ── EMA Legend ── */}
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '8px', fontSize: '11px', flexWrap: 'wrap' }}>
+        <span style={{ color: '#60a5fa' }}>━ EMA 9</span>
+        <span style={{ color: '#f59e0b' }}>━ EMA 21</span>
+        <span style={{ color: '#a855f7' }}>━ EMA 50</span>
+        <span style={{ color: '#22c55e' }}>▲ LONG aberta</span>
+        <span style={{ color: '#ef4444' }}>▼ SHORT aberta</span>
+        {loading && <span style={{ color: '#6366f1' }}>• Atualizando...</span>}
+      </div>
+
+      {/* ── Chart ── */}
+      <div ref={containerRef} style={{ width: '100%', height: '480px', minWidth: 0 }} />
+
+      {/* ── Posição aberta ── */}
+      {position && (
+        <div style={{
+          marginTop: '12px', padding: '12px', background: '#0a0a0f', borderRadius: '8px',
+          border: `1px solid ${isLong ? '#22c55e44' : '#ef444444'}`,
+          display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '13px',
+        }}>
+          <span style={{ color: isLong ? '#22c55e' : '#ef4444', fontWeight: 'bold' }}>
+            {isLong ? '▲ LONG' : '▼ SHORT'} {position.leverage}x
+          </span>
+          <span style={{ color: '#94a3b8' }}>
+            Entrada: <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
+              ${parseFloat(position.entryPrice).toFixed(2)}
+            </span>
+          </span>
+          <span style={{ color: '#94a3b8' }}>
+            Mark: <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
+              ${parseFloat(position.markPrice || position.entryPrice).toFixed(2)}
+            </span>
+          </span>
+          <span style={{ color: '#94a3b8' }}>
+            Qtd: <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
+              {Math.abs(parseFloat(position.positionAmt))}
+            </span>
+          </span>
+          <span style={{ color: '#94a3b8' }}>
+            PnL: <span style={{ color: pnl >= 0 ? '#22c55e' : '#ef4444', fontWeight: 'bold', fontFamily: 'monospace' }}>
+              {pnl >= 0 ? '+' : ''}${pnl.toFixed(4)} USDT
+            </span>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
