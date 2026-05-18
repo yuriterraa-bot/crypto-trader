@@ -32,14 +32,19 @@ export async function GET() {
     console.log('USDT asset:', JSON.stringify(usdt));
     
     const balance = parseFloat(
-      usdt?.availableBalance || 
-      usdt?.walletBalance || 
-      usdt?.balance || 
-      usdt?.crossWalletBalance || '0'
+      usdt?.walletBalance ||       // Saldo total da conta (Binance "Wallet Balance")
+      usdt?.crossWalletBalance ||  // Cross margin wallet
+      usdt?.availableBalance ||    // Disponível (descontando margem usada)
+      usdt?.balance || '0'
     );
     
     return NextResponse.json(
-      { balance: balance.toFixed(2), total: balance.toFixed(2), raw: usdt },
+      { 
+        balance: balance.toFixed(2), 
+        total: balance.toFixed(2),
+        available: parseFloat(usdt?.availableBalance || '0').toFixed(2),
+        raw: usdt 
+      },
       { 
         status: 200,
         headers: { 
