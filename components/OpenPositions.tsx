@@ -53,17 +53,39 @@ export default function OpenPositions() {
   const handleClose = async (symbol: string, positionAmt: string) => {
     try {
       setClosingMap(prev => ({ ...prev, [symbol]: true }));
+      // Para fechar SHORT (amt < 0) precisa de BUY; para LONG (amt > 0) precisa de SELL
       const side = parseFloat(positionAmt) > 0 ? 'SELL' : 'BUY';
       const res = await fetch('/api/orders/close', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol, side }),
       });
+
       const data = await res.json();
-      if (data.success || res.ok) await fetchAll();
-      else alert(data.error || 'Erro ao fechar posição');
+
+      if (!res.ok) {
+        const errMsg = data.error || JSON.stringify(data);
+        // Posição já foi fechada na Binance (reduceOnly sem posição aberta)
+        if (
+          errMsg.includes('-4061') ||
+          errMsg.includes('reduceOnly') ||
+          errMsg.includes('no position') ||
+          errMsg.includes('Position does not exist')
+        ) {
+          alert('✅ Posição já foi fechada na Binance. Atualizando lista...');
+        } else {
+          alert('Erro ao fechar posição: ' + errMsg);
+        }
+        await fetchAll();
+        return;
+      }
+
+      if (data.success || data.orderId || res.ok) {
+        alert('✅ Posição fechada com sucesso!');
+      }
+      await fetchAll();
     } catch (e: any) {
-      alert(e.message || 'Erro ao fechar posição');
+      alert('Erro de conexão ao fechar posição: ' + e.message);
     } finally {
       setClosingMap(prev => ({ ...prev, [symbol]: false }));
     }
