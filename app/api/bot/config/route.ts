@@ -80,8 +80,10 @@ export async function POST(request: Request) {
       const allowedKeys = ['is_running', 'is_paper_trade', 'risk_per_trade', 'max_positions', 'strategy_config', 'timeframe', 'session_filter', 'use_mtf', 'always_in_market', 'leverage'];
       allowedKeys.forEach(key => {
         if (body[key] !== undefined) {
-          if (key === 'is_running' || key === 'is_paper_trade') {
+          if (key === 'is_running' || key === 'is_paper_trade' || key === 'always_in_market') {
             updatePayload[key] = Boolean(body[key]);
+          } else if (key === 'leverage') {
+            updatePayload[key] = parseInt(String(body[key]), 10);
           } else {
             updatePayload[key] = body[key];
           }

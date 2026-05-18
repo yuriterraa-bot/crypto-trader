@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, RefreshCw, Activity, Clock, Zap, Target, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, RefreshCw, Activity, Clock, Zap, Target, BarChart3, AlertTriangle } from 'lucide-react';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -18,19 +18,20 @@ interface AIMResult {
   currentSide?: string | null;
 }
 
+interface BreakdownItem {
+  indicator: string;
+  contribution: number;
+  signal: string;
+}
+
 interface BotResult {
   symbol: string;
   score: number;
   techSignal: string;
   finalRecommendation: string;
   action: string;
-  breakdown: { indicator: string; contribution: number; signal: string }[];
+  breakdown: BreakdownItem[];
   aim?: AIMResult;
-}
-
-interface BotRunResponse {
-  status: string;
-  results?: BotResult[];
 }
 
 interface SignalLog {
@@ -41,35 +42,33 @@ interface SignalLog {
   price: number;
   score: number;
   created_at: string;
+  breakdown?: BreakdownItem[];
+}
+
+interface BotConfig {
+  is_running: boolean;
+  is_paper_trade: boolean;
+  always_in_market: boolean;
+  leverage: number;
 }
 
 export default function BotAnalysisPanel() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [botData, setBotData] = useState<BotRunResponse | null>(null);
+  const [liveResult, setLiveResult] = useState<BotResult | null>(null);
   const [signals, setSignals] = useState<SignalLog[]>([]);
+  const [botConfig, setBotConfig] = useState<BotConfig | null>(null);
   const [timeLeft, setTimeLeft] = useState(60);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchAnalysis = useCallback(async () => {
-    setLoading(true);
+  const fetchConfig = useCallback(async () => {
     try {
-      const res = await fetch('/api/bot/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: 'BTCUSDT' }),
-      });
+      const res = await fetch('/api/bot/config', { cache: 'no-store' });
       const data = await res.json();
-      setBotData(data);
-      setLastUpdated(new Date());
-      setTimeLeft(60);
-    } catch (e) {
-      console.error('BotAnalysisPanel fetch error:', e);
-    } finally {
-      setLoading(false);
-    }
+      setBotConfig(data);
+    } catch (e) { /* ignore */ }
   }, []);
 
   const fetchSignals = useCallback(async () => {
@@ -81,32 +80,63 @@ export default function BotAnalysisPanel() {
     if (data) setSignals(data);
   }, []);
 
+  const fetchLiveAnalysis = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/bot/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: 'BTCUSDT' }),
+      });
+      const data = await res.json();
+      if (data.results?.[0]) {
+        setLiveResult(data.results[0]);
+      }
+      setLastUpdated(new Date());
+      setTimeLeft(60);
+    } catch (e) {
+      console.error('BotAnalysisPanel fetch error:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setMounted(true);
-    fetchAnalysis();
+    fetchConfig();
+    fetchSignals();
+    // NÃO dispara fetchLiveAnalysis automaticamente — apenas ao clicar ou via intervalo manual
+    // para não sobrecarregar a API
     fetchSignals();
 
-    intervalRef.current = setInterval(() => {
-      fetchAnalysis();
-      fetchSignals();
-    }, 60000);
+    // Polling de sinais a cada 15s (leve)
+    const sigInterval = setInterval(fetchSignals, 15000);
 
+    // Countdown
     countdownRef.current = setInterval(() => {
-      setTimeLeft(prev => (prev <= 1 ? 60 : prev - 1));
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          // Buscar análise ao vivo quando countdown zera
+          fetchLiveAnalysis();
+          fetchSignals();
+          return 60;
+        }
+        return prev - 1;
+      });
     }, 1000);
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      clearInterval(sigInterval);
       if (countdownRef.current) clearInterval(countdownRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [fetchAnalysis, fetchSignals]);
+  }, [fetchConfig, fetchSignals, fetchLiveAnalysis]);
 
   if (!mounted) return null;
 
-  const btcResult = botData?.results?.find(r => r.symbol === 'BTCUSDT');
-
-  const getDirectionColor = (dir?: string) =>
-    dir === 'LONG' ? 'text-green-400' : dir === 'SHORT' ? 'text-red-400' : 'text-gray-400';
+  const isPaperTrade = botConfig?.is_paper_trade ?? true;
+  const isAIMActive = botConfig?.always_in_market ?? false;
+  const isRunning = botConfig?.is_running ?? false;
 
   const getSignalBadge = (sig: string) => {
     if (sig === 'BUY' || sig === 'LONG') return 'bg-green-500/20 text-green-400 border-green-500/30';
@@ -114,72 +144,108 @@ export default function BotAnalysisPanel() {
     return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
   };
 
-  const getActionBadge = (action?: string) => {
-    if (action === 'open') return 'bg-green-500/20 text-green-400';
-    if (action === 'reverse') return 'bg-orange-500/20 text-orange-400';
-    if (action === 'hold') return 'bg-blue-500/20 text-blue-400';
-    return 'bg-gray-500/20 text-gray-400';
+  const getActionLabel = (action?: string) => {
+    if (action === 'open') return { label: '🟢 ABRIR', cls: 'bg-green-500/20 text-green-400' };
+    if (action === 'reverse') return { label: '🔄 REVERTER', cls: 'bg-orange-500/20 text-orange-400' };
+    return { label: '🔵 MANTER', cls: 'bg-blue-500/20 text-blue-400' };
   };
+
+  const aim = liveResult?.aim;
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center space-x-3">
           <div className="relative">
             <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+              {isRunning && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
+              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isRunning ? 'bg-green-500' : 'bg-red-500'}`}></span>
             </span>
             <Activity className="h-6 w-6 text-indigo-400" />
           </div>
           <div>
-            <h2 className="text-xl font-black uppercase tracking-wider">Análise do Bot</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xl font-black uppercase tracking-wider">Análise do Bot</h2>
+              {isPaperTrade && (
+                <Badge className="text-[10px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 uppercase font-bold">
+                  Simulação
+                </Badge>
+              )}
+              {isAIMActive && (
+                <Badge className="text-[10px] bg-orange-500/20 text-orange-400 border border-orange-500/30 uppercase font-bold">
+                  Always-In
+                </Badge>
+              )}
+              {!isAIMActive && (
+                <Badge className="text-[10px] bg-gray-500/20 text-gray-400 border border-gray-500/30 uppercase">
+                  AIM Inativo
+                </Badge>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
-              {lastUpdated ? `Atualizado ${formatDistanceToNowStrict(lastUpdated, { locale: ptBR, addSuffix: true })}` : 'Aguardando...'}
+              {lastUpdated
+                ? `Atualizado ${formatDistanceToNowStrict(lastUpdated, { locale: ptBR, addSuffix: true })}`
+                : 'Clique em Atualizar para analisar'}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/50 px-3 py-1.5 rounded-full border border-border/50">
             <Clock className="h-3 w-3" />
-            <span>Próxima em {timeLeft}s</span>
+            <span>Auto em {timeLeft}s</span>
           </div>
-          <Button size="sm" variant="outline" onClick={() => { fetchAnalysis(); fetchSignals(); }} disabled={loading} className="h-8 text-xs">
+          <Button size="sm" variant="outline" onClick={() => { fetchLiveAnalysis(); fetchSignals(); }} disabled={loading} className="h-8 text-xs">
             <RefreshCw className={`h-3 w-3 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-            Atualizar
+            Analisar Agora
           </Button>
         </div>
       </div>
 
+      {/* Alert se AIM inativo */}
+      {!isAIMActive && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-300">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            <strong>Always-In Market está desativado.</strong> Vá em{' '}
+            <strong>Painel de Estratégias</strong>, ative o toggle e clique{' '}
+            <strong>Salvar Configuração</strong>.
+          </span>
+        </div>
+      )}
+
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
-        {/* SEÇÃO 1 - Análise Atual BTC */}
+        {/* SEÇÃO 1 — Análise AIM ao vivo */}
         <Card className="lg:col-span-1 bg-card border-border shadow-lg">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
               <Zap className="h-4 w-4 text-yellow-400" />
-              Análise Atual — BTC
+              Direção Always-In — BTC
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {btcResult?.aim ? (
+            {loading ? (
+              <div className="py-6 text-center">
+                <RefreshCw className="h-6 w-6 text-muted-foreground mx-auto animate-spin" />
+                <p className="text-xs text-muted-foreground mt-2">Analisando...</p>
+              </div>
+            ) : aim ? (
               <>
                 {/* Direção */}
                 <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
                   <div className="flex items-center gap-2">
-                    {btcResult.aim.direction === 'LONG'
+                    {aim.direction === 'LONG'
                       ? <TrendingUp className="h-8 w-8 text-green-400" />
-                      : <TrendingDown className="h-8 w-8 text-red-400" />
-                    }
+                      : <TrendingDown className="h-8 w-8 text-red-400" />}
                     <div>
-                      <p className={`text-2xl font-black ${getDirectionColor(btcResult.aim.direction)}`}>
-                        {btcResult.aim.direction}
+                      <p className={`text-2xl font-black ${aim.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
+                        {aim.direction}
                       </p>
-                      <p className="text-xs text-muted-foreground">Direção AIM</p>
+                      <p className="text-xs text-muted-foreground">Sinal AIM</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-bold">{btcResult.aim.score > 0 ? '+' : ''}{btcResult.aim.score}</p>
+                    <p className="text-lg font-bold">{aim.score > 0 ? '+' : ''}{aim.score}</p>
                     <p className="text-xs text-muted-foreground">Score</p>
                   </div>
                 </div>
@@ -188,62 +254,61 @@ export default function BotAnalysisPanel() {
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Confiança</span>
-                    <span className="font-bold">{btcResult.aim.confidence}%</span>
+                    <span className="font-bold">{aim.confidence}%</span>
                   </div>
                   <div className="w-full bg-secondary/50 rounded-full h-2">
                     <div
-                      className={`h-2 rounded-full transition-all ${btcResult.aim.direction === 'LONG' ? 'bg-green-500' : 'bg-red-500'}`}
-                      style={{ width: `${btcResult.aim.confidence}%` }}
+                      className={`h-2 rounded-full transition-all ${aim.direction === 'LONG' ? 'bg-green-500' : 'bg-red-500'}`}
+                      style={{ width: `${aim.confidence}%` }}
                     />
                   </div>
                 </div>
 
-                {/* Ação AIM */}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Ação</span>
-                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${getActionBadge(btcResult.aim.action)}`}>
-                    {btcResult.aim.action === 'open' ? '🟢 ABRIR' :
-                     btcResult.aim.action === 'reverse' ? '🔄 REVERTER' :
-                     '🔵 MANTER'}
-                  </span>
-                </div>
+                {/* Ação */}
+                {aim.action && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Ação executada</span>
+                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${getActionLabel(aim.action).cls}`}>
+                      {getActionLabel(aim.action).label}
+                    </span>
+                  </div>
+                )}
 
                 {/* Razões */}
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fatores</p>
-                  {btcResult.aim.reasons.map((r, i) => (
+                  {aim.reasons.map((r, i) => (
                     <p key={i} className="text-xs text-foreground/80 py-0.5">{r}</p>
                   ))}
                 </div>
               </>
             ) : (
               <div className="py-6 text-center space-y-2">
-                <Activity className="h-8 w-8 text-muted-foreground mx-auto animate-pulse" />
+                <Activity className="h-8 w-8 text-muted-foreground mx-auto" />
                 <p className="text-sm text-muted-foreground">
-                  {loading ? 'Analisando...' : 'Always-In Market não ativado'}
+                  {isAIMActive
+                    ? 'Clique em "Analisar Agora" para ver a direção'
+                    : 'Ative o Always-In Market para ver análise'}
                 </p>
-                <p className="text-xs text-muted-foreground">Ative em Configurações de Estratégia</p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* SEÇÃO 2 - Breakdown Indicadores */}
+        {/* SEÇÃO 2 — Breakdown Indicadores */}
         <Card className="lg:col-span-1 bg-card border-border shadow-lg">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-indigo-400" />
-              Breakdown — Indicadores
+              Breakdown — Confluência
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {btcResult?.breakdown && btcResult.breakdown.length > 0 ? (
+            {liveResult?.breakdown && liveResult.breakdown.length > 0 ? (
               <div className="space-y-2">
-                {btcResult.breakdown.map((item, i) => (
+                {liveResult.breakdown.map((item, i) => (
                   <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="text-xs font-medium truncate">{item.indicator}</span>
-                    </div>
+                    <span className="text-xs font-medium truncate flex-1 mr-2">{item.indicator}</span>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className={`text-xs font-bold ${item.contribution > 0 ? 'text-green-400' : item.contribution < 0 ? 'text-red-400' : 'text-gray-400'}`}>
                         {item.contribution > 0 ? '+' : ''}{item.contribution.toFixed(1)}
@@ -254,45 +319,65 @@ export default function BotAnalysisPanel() {
                     </div>
                   </div>
                 ))}
-                <div className="pt-2 flex justify-between text-sm font-bold">
-                  <span>Score Total</span>
-                  <span className={btcResult.score > 0 ? 'text-green-400' : btcResult.score < 0 ? 'text-red-400' : 'text-gray-400'}>
-                    {btcResult.score > 0 ? '+' : ''}{btcResult.score.toFixed(0)}
+                <div className="pt-2 flex justify-between text-sm font-bold border-t border-border/30">
+                  <span>Score Confluência</span>
+                  <span className={liveResult.score > 0 ? 'text-green-400' : liveResult.score < 0 ? 'text-red-400' : 'text-gray-400'}>
+                    {liveResult.score > 0 ? '+' : ''}{liveResult.score.toFixed(0)}
                   </span>
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Recomendação final</span>
+                  <Badge className={`text-[10px] border ${getSignalBadge(liveResult.finalRecommendation)}`}>
+                    {liveResult.finalRecommendation}
+                  </Badge>
                 </div>
               </div>
             ) : (
               <div className="py-8 text-center">
                 <p className="text-sm text-muted-foreground">
-                  {loading ? 'Calculando indicadores...' : 'Sem dados de breakdown'}
+                  {loading ? 'Calculando indicadores...' : 'Clique em "Analisar Agora"'}
                 </p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* SEÇÃO 3+4 - Posição Atual + Log */}
+        {/* SEÇÃO 3+4 — Log de Sinais */}
         <Card className="lg:col-span-1 bg-card border-border shadow-lg">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
               <Target className="h-4 w-4 text-orange-400" />
-              Log de Análises
+              Log de Sinais
+              {isPaperTrade && (
+                <Badge className="text-[9px] ml-auto bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 uppercase">
+                  Simulação
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Posição AIM */}
-            {btcResult?.aim?.currentSide !== undefined && (
-              <div className={`mb-3 p-2.5 rounded-lg text-xs border ${btcResult.aim.currentSide ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-secondary/30 border-border/50 text-muted-foreground'}`}>
-                {btcResult.aim.currentSide
-                  ? `📌 Posição aberta: ${btcResult.aim.currentSide}`
-                  : '⚪ Sem posição — bot vai abrir na próxima análise'}
+            {/* Posição atual AIM */}
+            {aim?.currentSide !== undefined && (
+              <div className={`mb-3 p-2.5 rounded-lg text-xs border ${
+                aim.currentSide
+                  ? 'bg-blue-500/10 border-blue-500/20 text-blue-400'
+                  : 'bg-secondary/30 border-border/50 text-muted-foreground'
+              }`}>
+                {aim.currentSide
+                  ? `📌 Posição aberta: ${aim.currentSide} ${isPaperTrade ? '(PAPER)' : ''}`
+                  : `⚪ Sem posição${isAIMActive ? ' — abrindo na próxima análise' : ''}`}
               </div>
             )}
 
-            {/* Signals log */}
             <div className="space-y-1.5">
               {signals.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">Sem sinais registrados</p>
+                <div className="py-6 text-center">
+                  <p className="text-xs text-muted-foreground">
+                    {isAIMActive
+                      ? 'Nenhum sinal registrado ainda. Execute uma análise.'
+                      : 'Ative o Always-In Market para registrar sinais.'}
+                  </p>
+                </div>
               ) : (
                 signals.map(sig => (
                   <div key={sig.id} className="flex items-start justify-between py-1.5 border-b border-border/20 last:border-0 gap-2">

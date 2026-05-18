@@ -63,6 +63,13 @@ export async function POST(request: Request) {
       ? config.strategy_config 
       : defaultStrategyConfig;
 
+    // LOG CRÍTICO: estado da config
+    console.log('=== BOT CONFIG ===');
+    console.log('is_running:', config.is_running);
+    console.log('is_paper_trade:', config.is_paper_trade);
+    console.log('always_in_market:', config.always_in_market);
+    console.log('leverage:', config.leverage);
+
     // Só parar se bot não estiver rodando
     if (!config.is_running) {
       return NextResponse.json({ 
@@ -269,67 +276,94 @@ export async function POST(request: Request) {
       results.push({ symbol, score, techSignal, finalRecommendation, action, risk: riskResult, ai: aiResult, sessionAllowed, breakdown });
 
       // ── ALWAYS-IN MARKET ─────────────────────────────────────────────
+      console.log(`[AIM] always_in_market=${config.always_in_market}, symbol=${symbol}`);
       if (config.always_in_market) {
         try {
           const aimResult = alwaysInMarketStrategy(klines);
+          console.log('[AIM] Result:', JSON.stringify(aimResult));
 
           // Detectar posição atual neste símbolo
           const openPos = positionsData.find(
             (p: any) => p.symbol === symbol && Math.abs(parseFloat(p.positionAmt)) > 0
           );
+          console.log('[AIM] Open position:', JSON.stringify(openPos || null));
+
           const currentSide = openPos
             ? (parseFloat(openPos.positionAmt) > 0 ? 'LONG' : 'SHORT')
             : null;
 
           let aimAction: 'open' | 'reverse' | 'hold' = 'hold';
-
           if (!currentSide) {
-            aimAction = 'open'; // Sem posição: abrir
+            aimAction = 'open';
           } else if (currentSide !== aimResult.direction) {
-            aimAction = 'reverse'; // Direção mudou: reverter
+            aimAction = 'reverse';
           }
-          // Mesma direção → hold
 
           const aimSide: 'BUY' | 'SELL' = aimResult.direction === 'LONG' ? 'BUY' : 'SELL';
+          const currentPrice = klines[klines.length - 1].close;
 
-          // Registrar no log independente da execução
-          await supabase.from('signals').insert([{
-            symbol,
-            strategy: 'AlwaysInMarket',
-            signal_type: aimSide,
-            price: klines[klines.length - 1].close,
-            score: aimResult.score,
-            breakdown: aimResult.reasons.map(r => ({ indicator: r, contribution: 0, signal: aimResult.direction }))
-          }]).catch(() => {});
+          console.log(`[AIM] Action=${aimAction}, side=${aimSide}, paper=${config.is_paper_trade}`);
 
-          // Execução real apenas fora do paper trade
-          if (!config.is_paper_trade && aimAction !== 'hold') {
-            const leverage = config.leverage || 3;
+          if (aimAction !== 'hold') {
+            // Sempre registrar sinal (paper e live)
+            await supabase.from('signals').insert([{
+              symbol,
+              strategy: 'AlwaysInMarket',
+              signal_type: aimSide,
+              price: currentPrice,
+              score: aimResult.score,
+              breakdown: aimResult.reasons.map((r: string) => ({ indicator: r, contribution: 0, signal: aimResult.direction }))
+            }]).then(() => console.log('[AIM] Signal saved'))
+              .catch((e: any) => console.error('[AIM] Signal save error:', e.message));
 
-            // Se REVERSE: fechar posição atual primeiro
-            if (aimAction === 'reverse' && openPos) {
-              const closeSide: 'BUY' | 'SELL' = parseFloat(openPos.positionAmt) > 0 ? 'SELL' : 'BUY';
-              await closePosition(symbol, closeSide).catch(e =>
-                console.error(`AIM closePosition error: ${e.message}`)
-              );
+            if (config.is_paper_trade) {
+              // Paper trade: registrar trade simulado
+              const paperQty = (usdtBalance * 0.95 / currentPrice);
+              const qty = symbol.includes('BTC') ? (Math.floor(paperQty * 1000) / 1000)
+                : symbol.includes('ETH') ? (Math.floor(paperQty * 100) / 100)
+                : (Math.floor(paperQty * 10) / 10);
+
+              await supabase.from('trades').insert([{
+                symbol,
+                side: aimSide,
+                quantity: qty,
+                price: currentPrice,
+                status: 'PAPER',
+                created_at: new Date().toISOString()
+              }]).then(() => console.log('[AIM] Paper trade saved'))
+                .catch((e: any) => console.error('[AIM] Trade save error:', e.message));
+
+            } else {
+              // Live trade: executar na Binance
+              const lev = config.leverage || 3;
+
+              if (aimAction === 'reverse' && openPos) {
+                const closeSide: 'BUY' | 'SELL' = parseFloat(openPos.positionAmt) > 0 ? 'SELL' : 'BUY';
+                await closePosition(symbol, closeSide)
+                  .then(() => console.log('[AIM] Position closed'))
+                  .catch((e: any) => console.error('[AIM] closePosition error:', e.response?.data || e.message));
+              }
+
+              const qty = calculateQuantity(usdtBalance * 0.95, currentPrice, symbol);
+              if (qty > 0) {
+                await openPosition(symbol, aimSide, qty, lev)
+                  .then(() => console.log('[AIM] Position opened:', qty, symbol))
+                  .catch((e: any) => console.error('[AIM] openPosition error:', e.response?.data || e.message));
+              } else {
+                console.warn('[AIM] qty=0, insufficient balance');
+              }
             }
-
-            // Abrir nova posição com 95% do saldo
-            const qty = calculateQuantity(usdtBalance * 0.95, klines[klines.length - 1].close, symbol);
-            if (qty > 0) {
-              await openPosition(symbol, aimSide, qty, leverage).catch(e =>
-                console.error(`AIM openPosition error: ${e.message}`)
-              );
-            }
+          } else {
+            console.log('[AIM] Holding current position, no action needed');
           }
 
-          // Adicionar AIM result ao resultado do símbolo
+          // Atualizar último resultado com dados AIM
           const lastResult = results[results.length - 1];
           if (lastResult) {
             lastResult.aim = { ...aimResult, action: aimAction, currentSide };
           }
         } catch (aimErr: any) {
-          console.error('AIM strategy error:', aimErr.message);
+          console.error('[AIM] Strategy error:', aimErr.message, aimErr.stack?.split('\n')[1]);
         }
       }
       // ─────────────────────────────────────────────────────────────────
