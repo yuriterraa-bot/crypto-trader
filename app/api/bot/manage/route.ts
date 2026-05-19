@@ -24,7 +24,7 @@ export async function GET() {
 
     const positionsData = await getPositions().catch(() => []);
     const openPositions = Array.isArray(positionsData)
-      ? positionsData.filter((p: any) => Math.abs(parseFloat(p.positionAmt || '0')) > 0)
+      ? positionsData.filter((p: any) => Math.abs(parseFloat(p.positionAmt || '0')) > 0.0001)
       : [];
 
     const managed: any[] = [];
@@ -32,17 +32,20 @@ export async function GET() {
     for (const pos of openPositions) {
       const symbol = pos.symbol;
       const posAmt = parseFloat(pos.positionAmt);
+      const qty = Math.abs(posAmt);
       const currentSide = posAmt > 0 ? 'LONG' : 'SHORT';
-      const entryPrice = parseFloat(pos.entryPrice || pos.avgCost || '0');
+      const closeSide: 'BUY' | 'SELL' = currentSide === 'LONG' ? 'SELL' : 'BUY';
+      const entryPrice = parseFloat(pos.entryPrice || '0');
       const currentPrice = parseFloat(pos.markPrice || pos.entryPrice || '0');
-      const pnlUSDT = parseFloat(pos.unrealizedProfit || pos.unRealizedProfit || '0');
-      const leverage = config.leverage || 3;
+      const pnlUSDT = parseFloat(pos.unRealizedProfit || pos.unrealizedProfit || '0');
+      // Use leverage from Binance position, not config
+      const leverage = parseFloat(pos.leverage) || config.leverage || 3;
 
       const pnlPercent = currentSide === 'LONG'
         ? (currentPrice - entryPrice) / entryPrice * 100 * leverage
         : (entryPrice - currentPrice) / entryPrice * 100 * leverage;
 
-      // Buscar trade aberto no Supabase
+      // Duration: use Supabase trade first, then Binance updateTime, then 0
       const { data: openTrade } = await supabase
         .from('trades')
         .select('*')
@@ -52,11 +55,20 @@ export async function GET() {
         .limit(1);
 
       const trade = openTrade?.[0];
-      const openTime = trade?.open_time ? new Date(trade.open_time).getTime() : Date.now();
-      const durationMinutes = (Date.now() - openTime) / 60000;
 
-      const sl = config.stop_loss_percent || 1.0;
-      const tp = config.take_profit_percent || 2.0;
+      // Fallback to Binance updateTime if no Supabase record
+      const openTimeMs = trade?.open_time
+        ? new Date(trade.open_time).getTime()
+        : pos.updateTime
+          ? parseInt(pos.updateTime)
+          : null;
+
+      const durationMinutes = openTimeMs
+        ? (Date.now() - openTimeMs) / 60000
+        : 0;
+
+      const sl = parseFloat(config.stop_loss_percent) || 1.0;
+      const tp = parseFloat(config.take_profit_percent) || 2.0;
       const maxDur = config.max_trade_duration_minutes || 30;
 
       let closeReason: 'WIN' | 'LOSS' | 'TIMEOUT' | null = null;
@@ -65,35 +77,52 @@ export async function GET() {
       else if (pnlPercent <= -sl) closeReason = 'LOSS';
       else if (durationMinutes >= maxDur) closeReason = 'TIMEOUT';
 
+      console.log(`[MANAGE] ${symbol} | side:${currentSide} | pnl%:${pnlPercent.toFixed(2)} | sl:${-sl} tp:${tp} | dur:${durationMinutes.toFixed(1)}min | reason:${closeReason || 'HOLD'}`);
+
       if (closeReason) {
-        const closeSide: 'BUY' | 'SELL' = currentSide === 'LONG' ? 'SELL' : 'BUY';
+        let closeError: string | null = null;
 
         if (!config.is_paper_trade) {
-          await closePosition(symbol, closeSide)
-            .catch((e: any) => console.error('[MANAGE] closePosition error:', e.response?.data || e.message));
+          try {
+            await closePosition(symbol, closeSide, qty);
+            console.log(`[MANAGE] ✓ ${symbol} closed ${closeSide} qty:${qty}`);
+          } catch (e: any) {
+            closeError = e.response?.data?.msg || e.message;
+            console.error(`[MANAGE] ✗ ${symbol} close FAILED:`, closeError);
+          }
         }
 
+        // Update Supabase record (best-effort)
         if (trade?.id) {
           await supabase.from('trades').update({
             status: closeReason,
             exit_price: currentPrice,
             pnl: pnlUSDT,
             closed_at: new Date().toISOString(),
-          }).eq('id', trade.id);
+          }).eq('id', trade.id).catch(() => {});
         }
 
-        console.log(`[MANAGE] ${symbol} closed: ${closeReason} | PnL: ${pnlPercent.toFixed(2)}%`);
-        managed.push({ symbol, action: `CLOSE_${closeReason}`, pnlPercent: pnlPercent.toFixed(2), pnlUSDT, durationMinutes: durationMinutes.toFixed(1) });
+        managed.push({
+          symbol,
+          action: `CLOSE_${closeReason}`,
+          pnlPercent: pnlPercent.toFixed(2),
+          pnlUSDT: pnlUSDT.toFixed(4),
+          durationMinutes: durationMinutes.toFixed(1),
+          qty,
+          closeError,
+        });
       } else {
         managed.push({
-          symbol, action: 'HOLD', currentSide,
-          entryPrice, currentPrice,
+          symbol,
+          action: 'HOLD',
+          currentSide,
+          entryPrice,
+          currentPrice,
           pnlPercent: pnlPercent.toFixed(2),
-          pnlUSDT,
+          pnlUSDT: pnlUSDT.toFixed(4),
           durationMinutes: durationMinutes.toFixed(1),
-          sl, tp, maxDur,
-          slPrice: trade?.stop_loss || null,
-          tpPrice: trade?.take_profit || null,
+          qty,
+          sl: -sl, tp, maxDur,
         });
       }
     }
@@ -102,7 +131,7 @@ export async function GET() {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (error: any) {
-    console.error('[MANAGE] Error:', error.message);
+    console.error('[MANAGE] Fatal error:', error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

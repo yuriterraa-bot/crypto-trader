@@ -1,34 +1,34 @@
 import { NextResponse } from 'next/server';
-import { createSignature } from '@/lib/binance';
-import axios from 'axios';
+import { closePosition, getPositions } from '@/lib/binance';
 
-const BASE_URL = process.env.BINANCE_TESTNET === 'true' 
-  ? 'https://demo-fapi.binance.com' 
-  : 'https://fapi.binance.com';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    const { symbol, side } = await request.json();
-    const closeSide = side === 'BUY' ? 'SELL' : 'BUY';
-    
-    const timestamp = Date.now();
-    const params = `symbol=${symbol}&side=${closeSide}&type=MARKET&reduceOnly=true&timestamp=${timestamp}`;
-    const signature = createSignature(params);
-    
-    const response = await axios.post(
-      `${BASE_URL}/fapi/v1/order`,
-      `${params}&signature=${signature}`,
-      { headers: { 
-        'X-MBX-APIKEY': process.env.BINANCE_API_KEY,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }}
-    );
-    
-    return NextResponse.json({ success: true, order: response.data });
+    const { symbol, side, quantity } = await request.json();
+
+    if (!symbol || !side) {
+      return NextResponse.json({ error: 'symbol e side são obrigatórios' }, { status: 400 });
+    }
+
+    // Se quantity não foi enviada, buscar da API Binance
+    let qty = quantity ? parseFloat(quantity) : undefined;
+    if (!qty) {
+      const positions = await getPositions(symbol).catch(() => []);
+      const pos = positions.find((p: any) => p.symbol === symbol);
+      qty = Math.abs(parseFloat(pos?.positionAmt || '0'));
+    }
+
+    if (!qty || qty <= 0) {
+      return NextResponse.json({ error: `Posição não encontrada para ${symbol}` }, { status: 400 });
+    }
+
+    const result = await closePosition(symbol, side as 'BUY' | 'SELL', qty);
+    return NextResponse.json({ success: true, order: result });
   } catch (error: any) {
-    console.error('Close position error:', error.response?.data || error.message);
-    return NextResponse.json({ 
-      error: error.response?.data?.msg || error.message 
+    console.error('[CLOSE] error:', error.response?.data || error.message);
+    return NextResponse.json({
+      error: error.response?.data?.msg || error.message,
     }, { status: 400 });
   }
 }

@@ -173,16 +173,43 @@ export const createRawOrder = async (params: Record<string, any>) => {
 
 /**
  * Fecha uma posição existente usando reduceOnly MARKET order
+ * quantity = Math.abs(positionAmt) da posição
  */
-export const closePosition = async (symbol: string, side: 'BUY' | 'SELL') => {
+export const closePosition = async (symbol: string, side: 'BUY' | 'SELL', quantity?: number) => {
   const timestamp = Date.now();
-  const queryString = createQueryString({ symbol, side, type: 'MARKET', reduceOnly: 'true', timestamp });
+  let qty = quantity;
+
+  // Se não foi passada a quantidade, buscar da API
+  if (!qty) {
+    const positions = await getPositions(symbol).catch(() => []);
+    const pos = positions.find((p: any) => p.symbol === symbol);
+    qty = Math.abs(parseFloat(pos?.positionAmt || '0'));
+  }
+
+  if (!qty || qty <= 0) {
+    throw new Error(`closePosition: quantity inválida (${qty}) para ${symbol}`);
+  }
+
+  // Formatar quantidade com precisão correta
+  const quantityStr = symbol.includes('BTC')
+    ? qty.toFixed(3)
+    : symbol.includes('ETH')
+      ? qty.toFixed(2)
+      : qty.toFixed(1);
+
+  const queryString = createQueryString({
+    symbol, side, type: 'MARKET',
+    quantity: quantityStr,
+    reduceOnly: 'true',
+    timestamp,
+  });
   const signature = generateSignature(queryString);
   try {
     const response = await api.post(`/fapi/v1/order?${queryString}&signature=${signature}`);
+    console.log(`[closePosition] ${symbol} ${side} ${quantityStr} → filled`);
     return response.data;
-  } catch (error) {
-    console.error('Binance API Error (closePosition):', error);
+  } catch (error: any) {
+    console.error('[closePosition] error:', symbol, side, error.response?.data || error.message);
     throw error;
   }
 };
