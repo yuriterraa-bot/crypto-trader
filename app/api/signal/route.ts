@@ -1,50 +1,35 @@
 import { NextResponse } from 'next/server';
+import { fetchCandles } from '@/lib/binance';
+import { confluenceStrategy } from '@/lib/strategies/confluenceStrategy';
 
-export async function GET() {
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: Request) {
   try {
-    const { supabase } = await import('@/lib/supabase');
-    
-    // Buscar último sinal de cada par
-    const { data: btcSignal } = await supabase
-      .from('signals')
-      .select('*')
-      .eq('symbol', 'BTCUSDT')
-      .order('created_at', { ascending: false })
-      .limit(1);
-      
-    const { data: ethSignal } = await supabase
-      .from('signals')
-      .select('*')
-      .eq('symbol', 'ETHUSDT')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    const { searchParams } = new URL(request.url);
+    const symbol   = searchParams.get('symbol')   || 'BTCUSDT';
+    const interval = searchParams.get('interval') || '15m';
+    const limit    = parseInt(searchParams.get('limit') || '200');
 
-    // Buscar última análise IA
-    const { data: btcAI } = await supabase
-      .from('ai_analysis')
-      .select('*')
-      .eq('symbol', 'BTCUSDT')
-      .order('created_at', { ascending: false })
-      .limit(1);
-      
-    const { data: ethAI } = await supabase
-      .from('ai_analysis')
-      .select('*')
-      .eq('symbol', 'ETHUSDT')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    const candles = await fetchCandles(symbol, interval, limit);
+    if (!candles || candles.length < 50) {
+      return NextResponse.json({ error: 'Candles insuficientes' }, { status: 400 });
+    }
+
+    const result = confluenceStrategy(candles);
 
     return NextResponse.json({
-      btc: {
-        signal: btcSignal?.[0] || null,
-        ai: btcAI?.[0] || null
-      },
-      eth: {
-        signal: ethSignal?.[0] || null,
-        ai: ethAI?.[0] || null
-      }
-    });
+      symbol, interval,
+      direction:  result.direction,
+      score:      result.score,
+      threshold:  result.threshold,
+      confidence: result.confidence,
+      signals:    result.signals,
+      details:    result.details,
+      timestamp:  new Date().toISOString(),
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error: any) {
-    return NextResponse.json({ btc: null, eth: null });
+    console.error('[/api/signal] error:', error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

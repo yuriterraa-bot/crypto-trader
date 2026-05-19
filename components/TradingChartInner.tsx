@@ -19,9 +19,13 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const ema9Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema21Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ema50Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const ema9Ref   = useRef<ISeriesApi<'Line'> | null>(null);
+  const ema21Ref  = useRef<ISeriesApi<'Line'> | null>(null);
+  const ema50Ref  = useRef<ISeriesApi<'Line'> | null>(null);
+  const ema13Ref  = useRef<ISeriesApi<'Line'> | null>(null);
+  const ema30Ref  = useRef<ISeriesApi<'Line'> | null>(null);
+  const nwUpperRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const nwLowerRef = useRef<ISeriesApi<'Line'> | null>(null);
 
   const [selectedSymbol, setSelectedSymbol] = useState(symbol);
   const [selectedTf, setSelectedTf] = useState('15m');
@@ -30,6 +34,7 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
   const [change, setChange] = useState(0);
   const [position, setPosition] = useState<any>(null);
   const [chartReady, setChartReady] = useState(false);
+  const [confluence, setConfluence] = useState<any>(null);
 
   // ── Init chart (once) ──────────────────────────────────────────────
   useEffect(() => {
@@ -62,15 +67,13 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
       wickUpColor: '#22c55e', wickDownColor: '#ef4444',
     });
 
-    ema9Ref.current = chart.addSeries(LineSeries, {
-      color: '#60a5fa', lineWidth: 1, title: 'EMA9',
-    });
-    ema21Ref.current = chart.addSeries(LineSeries, {
-      color: '#f59e0b', lineWidth: 1, title: 'EMA21',
-    });
-    ema50Ref.current = chart.addSeries(LineSeries, {
-      color: '#a855f7', lineWidth: 1, title: 'EMA50',
-    });
+    ema9Ref.current  = chart.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 1, title: 'EMA9' });
+    ema21Ref.current = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 1, title: 'EMA21' });
+    ema50Ref.current = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 1, title: 'EMA50' });
+    ema13Ref.current = chart.addSeries(LineSeries, { color: '#06b6d4', lineWidth: 2, title: 'EMA13' });
+    ema30Ref.current = chart.addSeries(LineSeries, { color: '#f43f5e', lineWidth: 2, title: 'EMA30' });
+    nwUpperRef.current = chart.addSeries(LineSeries, { color: '#ef444466', lineWidth: 1, lineStyle: LineStyle.Dashed, title: 'NW↑' });
+    nwLowerRef.current = chart.addSeries(LineSeries, { color: '#22c55e66', lineWidth: 1, lineStyle: LineStyle.Dashed, title: 'NW↓' });
 
     chartRef.current = chart;
     setChartReady(true);
@@ -85,11 +88,10 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
     return () => {
       window.removeEventListener('resize', handleResize);
       chart.remove();
-      chartRef.current = null;
-      candleRef.current = null;
-      ema9Ref.current = null;
-      ema21Ref.current = null;
-      ema50Ref.current = null;
+      chartRef.current = null; candleRef.current = null;
+      ema9Ref.current = null; ema21Ref.current = null; ema50Ref.current = null;
+      ema13Ref.current = null; ema30Ref.current = null;
+      nwUpperRef.current = null; nwLowerRef.current = null;
     };
   }, []);
 
@@ -130,7 +132,7 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
       }));
       candleRef.current!.setData(candleData);
 
-      // EMA
+      // EMA helper (chart format)
       const calcEMA = (period: number) => {
         const closes = candles.map(c => c.close);
         if (closes.length < period) return [];
@@ -147,7 +149,35 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
       ema9Ref.current?.setData(calcEMA(9));
       ema21Ref.current?.setData(calcEMA(21));
       ema50Ref.current?.setData(calcEMA(50));
+      ema13Ref.current?.setData(calcEMA(13));
+      ema30Ref.current?.setData(calcEMA(30));
+
+      // Nadaraya-Watson Envelope (bandwidth=8, mult=2)
+      const nwCloses = candles.map(c => c.close);
+      const nwN = nwCloses.length;
+      const bw = 8;
+      const nwMid: number[] = [];
+      for (let i = 0; i < nwN; i++) {
+        let s = 0, w = 0;
+        for (let j = 0; j < nwN; j++) {
+          const wi = Math.exp(-((i - j) ** 2) / (2 * bw * bw));
+          s += wi * nwCloses[j]; w += wi;
+        }
+        nwMid.push(s / w);
+      }
+      const residuals = nwCloses.map((c, i) => c - nwMid[i]);
+      const std = Math.sqrt(residuals.reduce((a, b) => a + b * b, 0) / nwN);
+      nwUpperRef.current?.setData(candles.map((c, i) => ({ time: Math.floor(c.openTime / 1000) as any, value: nwMid[i] + 2 * std })));
+      nwLowerRef.current?.setData(candles.map((c, i) => ({ time: Math.floor(c.openTime / 1000) as any, value: nwMid[i] - 2 * std })));
+
       chartRef.current?.timeScale().fitContent();
+
+      // Fetch confluence signals from API
+      try {
+        const confRes = await fetch(`/api/signal?symbol=${selectedSymbol}&interval=${selectedTf}`, { cache: 'no-store' });
+        if (confRes.ok) { const cd = await confRes.json(); setConfluence(cd); }
+      } catch { /* ignore */ }
+
 
       // ── Remove linhas anteriores ──
       priceLineRefs.current.forEach(pl => {
@@ -302,10 +332,14 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
       </div>
 
       {/* ── Legend ── */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '8px', fontSize: '11px', flexWrap: 'wrap' }}>
-        <span style={{ color: '#60a5fa' }}>━ EMA 9</span>
-        <span style={{ color: '#f59e0b' }}>━ EMA 21</span>
-        <span style={{ color: '#a855f7' }}>━ EMA 50</span>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '8px', fontSize: '11px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ color: '#60a5fa' }}>━ EMA9</span>
+        <span style={{ color: '#f59e0b' }}>━ EMA21</span>
+        <span style={{ color: '#a855f7' }}>━ EMA50</span>
+        <span style={{ color: '#06b6d4', fontWeight: 'bold' }}>━ EMA13</span>
+        <span style={{ color: '#f43f5e', fontWeight: 'bold' }}>━ EMA30</span>
+        <span style={{ color: '#ef444488' }}>╌ NW↑</span>
+        <span style={{ color: '#22c55e88' }}>╌ NW↓</span>
         <span style={{ color: '#94a3b8' }}>╌ Entry</span>
         <span style={{ color: '#ef4444' }}>╌ SL</span>
         <span style={{ color: '#22c55e' }}>╌ TP</span>
@@ -343,6 +377,49 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
           </div>
         );
       })()}
+      {/* ── Confluence Signals Panel ── */}
+      {confluence && (
+        <div style={{ marginTop: '12px', padding: '12px', background: '#0a0a0f', borderRadius: '8px', border: '1px solid #1e1e2e' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#94a3b8' }}>⚡ CONFLOWÊNCI A DE INDICADORES</span>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>Score:</span>
+              <span style={{
+                fontSize: '14px', fontWeight: 'bold', fontFamily: 'monospace',
+                color: confluence.score >= 4 ? '#22c55e' : confluence.score <= -4 ? '#ef4444' : '#f59e0b'
+              }}>{confluence.score > 0 ? '+' : ''}{confluence.score}</span>
+              <span style={{
+                padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold',
+                background: confluence.direction === 'LONG' ? '#22c55e22' : confluence.direction === 'SHORT' ? '#ef444422' : '#f59e0b22',
+                color: confluence.direction === 'LONG' ? '#22c55e' : confluence.direction === 'SHORT' ? '#ef4444' : '#f59e0b',
+                border: `1px solid ${confluence.direction === 'LONG' ? '#22c55e44' : confluence.direction === 'SHORT' ? '#ef444444' : '#f59e0b44'}`,
+              }}>{confluence.direction}</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {confluence.signals?.map((s: any) => {
+              const bull = s.score > 0;
+              const bear = s.score < 0;
+              return (
+                <div key={s.name} style={{
+                  padding: '4px 8px', borderRadius: '6px', fontSize: '10px',
+                  background: bull ? '#22c55e11' : bear ? '#ef444411' : '#ffffff08',
+                  border: `1px solid ${bull ? '#22c55e33' : bear ? '#ef444433' : '#ffffff15'}`,
+                  display: 'flex', flexDirection: 'column', gap: '1px', minWidth: '80px',
+                }}>
+                  <span style={{ color: '#64748b', fontSize: '9px' }}>{s.name}</span>
+                  <span style={{ color: bull ? '#22c55e' : bear ? '#ef4444' : '#94a3b8', fontWeight: 'bold', fontSize: '10px' }}>
+                    {s.signal}
+                  </span>
+                  <span style={{ color: bull ? '#22c55eaa' : bear ? '#ef4444aa' : '#64748b', fontSize: '9px', fontFamily: 'monospace' }}>
+                    {s.score > 0 ? '+' : ''}{s.score}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

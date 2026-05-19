@@ -5,7 +5,7 @@ import {
   openPosition, closePosition, calculateQuantity,
   setLeverage, createRawOrder
 } from '@/lib/binance';
-import { alwaysInMarketStrategy } from '@/lib/strategies/alwaysInMarket';
+import { confluenceStrategy } from '@/lib/strategies/confluenceStrategy';
 
 export async function POST(request: Request) {
   try {
@@ -161,14 +161,32 @@ export async function POST(request: Request) {
       }
 
       // ── 5. Sem posição aberta: analisar e abrir nova ───────────────
-      const aimResult = alwaysInMarketStrategy(klines);
-      const side: 'BUY' | 'SELL' = aimResult.direction === 'LONG' ? 'BUY' : 'SELL';
+      const confluence = confluenceStrategy(klines);
+      const threshold = parseFloat(config.confluence_threshold) || 4;
+      confluence.threshold = threshold;
+
+      console.log(`[CONFLUENCE] ${symbol} score:${confluence.score} dir:${confluence.direction}`);
+      confluence.signals.forEach(s =>
+        console.log(`  ${s.name}: ${s.signal} (${s.score > 0 ? '+' : ''}${s.score})${s.value ? ' val:' + s.value : ''}`)
+      );
+
+      // Se score não atingiu threshold → NEUTRAL, não abre
+      if (confluence.direction === 'NEUTRAL') {
+        results.push({
+          symbol, action: 'NEUTRAL',
+          score: confluence.score,
+          threshold,
+          signals: confluence.signals,
+        });
+        continue;
+      }
+
+      const side: 'BUY' | 'SELL' = confluence.direction === 'LONG' ? 'BUY' : 'SELL';
       const qty = calculateQuantity(usdtBalance * 0.95, currentPrice, symbol);
       const lev = config.leverage || 3;
       const sl = config.stop_loss_percent || 1.0;
       const tp = config.take_profit_percent || 2.0;
 
-      // Calcular preços de SL e TP
       const slPrice = side === 'BUY'
         ? currentPrice * (1 - sl / 100 / lev)
         : currentPrice * (1 + sl / 100 / lev);
@@ -176,91 +194,60 @@ export async function POST(request: Request) {
         ? currentPrice * (1 + tp / 100 / lev)
         : currentPrice * (1 - tp / 100 / lev);
 
-      console.log(`[SCALPING] Abrindo ${side} ${qty} ${symbol} | SL:${slPrice.toFixed(2)} | TP:${tpPrice.toFixed(2)}`);
+      console.log(`[SCALPING] Abrindo ${side} ${qty} ${symbol} | score:${confluence.score} | SL:${slPrice.toFixed(2)} | TP:${tpPrice.toFixed(2)}`);
 
       let orderResult = null;
       let openError = null;
 
       if (!config.is_paper_trade) {
         try {
-          // Definir alavancagem
           await setLeverage(symbol, lev).catch(() => {});
-
-          // Ordem de entrada MARKET
           orderResult = await openPosition(symbol, side, qty, lev);
-          const entryFill = orderResult?.avgPrice || orderResult?.price || currentPrice;
-
-          // Aguardar para garantir que a posição foi aberta
           await new Promise(r => setTimeout(r, 800));
 
-          // Stop Loss STOP_MARKET
           const slSide: 'BUY' | 'SELL' = side === 'BUY' ? 'SELL' : 'BUY';
-          const slPriceFixed = parseFloat(slPrice.toFixed(2));
-          const tpPriceFixed = parseFloat(tpPrice.toFixed(2));
+          await createRawOrder({
+            symbol, side: slSide, type: 'STOP_MARKET',
+            stopPrice: parseFloat(slPrice.toFixed(2)),
+            closePosition: 'true', timeInForce: 'GTE_GTC', workingType: 'MARK_PRICE',
+          }).catch((e: any) => console.error('[SCALPING] SL error:', e.response?.data || e.message));
 
           await createRawOrder({
-            symbol, side: slSide,
-            type: 'STOP_MARKET',
-            stopPrice: slPriceFixed,
-            closePosition: 'true',
-            timeInForce: 'GTE_GTC',
-            workingType: 'MARK_PRICE',
-          }).catch((e: any) => console.error('[SCALPING] SL order error:', e.response?.data || e.message));
-
-          // Take Profit TAKE_PROFIT_MARKET
-          await createRawOrder({
-            symbol, side: slSide,
-            type: 'TAKE_PROFIT_MARKET',
-            stopPrice: tpPriceFixed,
-            closePosition: 'true',
-            timeInForce: 'GTE_GTC',
-            workingType: 'MARK_PRICE',
-          }).catch((e: any) => console.error('[SCALPING] TP order error:', e.response?.data || e.message));
-
-          console.log(`[SCALPING] SL/TP colocados | SL:${slPriceFixed} | TP:${tpPriceFixed}`);
+            symbol, side: slSide, type: 'TAKE_PROFIT_MARKET',
+            stopPrice: parseFloat(tpPrice.toFixed(2)),
+            closePosition: 'true', timeInForce: 'GTE_GTC', workingType: 'MARK_PRICE',
+          }).catch((e: any) => console.error('[SCALPING] TP error:', e.response?.data || e.message));
         } catch (e: any) {
           openError = e.response?.data || e.message;
-          console.error('[SCALPING] Erro ao abrir posição:', openError);
+          console.error('[SCALPING] Erro ao abrir:', openError);
         }
       }
 
-      // Registrar no Supabase
       if (!openError) {
         await supabase.from('trades').insert([{
-          symbol,
-          side,
-          direction: aimResult.direction,
-          quantity: qty,
-          price: currentPrice,
-          entry_price: currentPrice,
+          symbol, side, direction: confluence.direction, quantity: qty,
+          price: currentPrice, entry_price: currentPrice,
           stop_loss: parseFloat(slPrice.toFixed(2)),
           take_profit: parseFloat(tpPrice.toFixed(2)),
-          status: 'OPEN',
-          open_time: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-        }]).then(() => console.log('[SCALPING] Trade registrado no Supabase'))
-          .catch((e: any) => console.error('[SCALPING] Supabase insert error:', e.message));
+          status: 'OPEN', open_time: new Date().toISOString(), created_at: new Date().toISOString(),
+        }]).catch((e: any) => console.error('[SCALPING] Supabase insert:', e.message));
 
         await supabase.from('signals').insert([{
-          symbol,
-          strategy: 'Scalping-AIM',
-          signal_type: side,
-          price: currentPrice,
-          score: aimResult.score,
-          breakdown: aimResult.reasons?.map((r: string) => ({ indicator: r, contribution: 0, signal: r })) || [],
+          symbol, strategy: 'Confluence-v2', signal_type: side,
+          price: currentPrice, score: confluence.score,
+          breakdown: confluence.signals,
         }]).catch(() => {});
       }
 
       results.push({
         symbol, action: openError ? 'OPEN_ERROR' : 'OPEN',
-        side, direction: aimResult.direction,
-        confidence: aimResult.confidence,
+        side, direction: confluence.direction,
+        score: confluence.score, confidence: confluence.confidence,
+        signals: confluence.signals,
         qty, entryPrice: currentPrice,
         slPrice: parseFloat(slPrice.toFixed(2)),
         tpPrice: parseFloat(tpPrice.toFixed(2)),
-        reasons: aimResult.reasons,
         error: openError || null,
-        orderResult: orderResult || null,
       });
     }
 
