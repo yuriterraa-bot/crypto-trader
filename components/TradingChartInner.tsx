@@ -7,6 +7,7 @@ import {
   CrosshairMode,
   CandlestickSeries,
   LineSeries,
+  LineStyle,
   IChartApi,
   ISeriesApi,
 } from 'lightweight-charts';
@@ -197,31 +198,31 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
           // Linha de entrada (branca tracejada)
           const entryLine = candleRef.current!.createPriceLine({
             price: entry,
-            color: '#94a3b8',
-            lineWidth: 1,
-            lineStyle: 2, // dashed
+            color: '#e2e8f0',
+            lineWidth: 2,
+            lineStyle: LineStyle.Dashed,
             axisLabelVisible: true,
-            title: `Entry ${isLong ? 'LONG' : 'SHORT'}`,
+            title: `▲ Entry`,
           });
 
           // Linha de SL (vermelha)
           const slLine = candleRef.current!.createPriceLine({
             price: slPrice,
             color: '#ef4444',
-            lineWidth: 1,
-            lineStyle: 2, // dashed
+            lineWidth: 2,
+            lineStyle: LineStyle.Dashed,
             axisLabelVisible: true,
-            title: `SL ${slPct}%`,
+            title: `▼ SL`,
           });
 
           // Linha de TP (verde)
           const tpLine = candleRef.current!.createPriceLine({
             price: tpPrice,
             color: '#22c55e',
-            lineWidth: 1,
-            lineStyle: 2, // dashed
+            lineWidth: 2,
+            lineStyle: LineStyle.Dashed,
             axisLabelVisible: true,
-            title: `TP ${tpPct}%`,
+            title: `▲ TP`,
           });
 
           priceLineRefs.current.push(entryLine, slLine, tpLine);

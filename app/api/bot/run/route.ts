@@ -100,7 +100,7 @@ export async function POST(request: Request) {
 
         const sl = config.stop_loss_percent || 1.0;
         const tp = config.take_profit_percent || 2.0;
-        const maxDur = config.max_trade_duration_minutes || 30;
+        const maxDur = config.max_trade_duration_minutes; // 0 = sem timeout
 
         let closeReason: 'WIN' | 'LOSS' | 'TIMEOUT' | null = null;
 
@@ -110,10 +110,11 @@ export async function POST(request: Request) {
         } else if (pnlPercent <= -sl) {
           closeReason = 'LOSS';
           console.log(`[SCALPING] SL atingido: ${pnlPercent.toFixed(2)}% | ${symbol}`);
-        } else if (durationMinutes >= maxDur) {
+        } else if (maxDur > 0 && durationMinutes >= maxDur) {
           closeReason = 'TIMEOUT';
           console.log(`[SCALPING] Timeout: ${durationMinutes.toFixed(1)} min | ${symbol}`);
         }
+
 
         if (closeReason) {
           // Fechar posição

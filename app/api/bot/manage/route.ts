@@ -69,13 +69,14 @@ export async function GET() {
 
       const sl = parseFloat(config.stop_loss_percent) || 1.0;
       const tp = parseFloat(config.take_profit_percent) || 2.0;
-      const maxDur = config.max_trade_duration_minutes || 30;
+      const maxDur = config.max_trade_duration_minutes; // 0 = sem timeout (fechar só por SL/TP)
 
       let closeReason: 'WIN' | 'LOSS' | 'TIMEOUT' | null = null;
 
       if (pnlPercent >= tp) closeReason = 'WIN';
       else if (pnlPercent <= -sl) closeReason = 'LOSS';
-      else if (durationMinutes >= maxDur) closeReason = 'TIMEOUT';
+      else if (maxDur > 0 && durationMinutes >= maxDur) closeReason = 'TIMEOUT'; // 0 = desativado
+
 
       console.log(`[MANAGE] ${symbol} | side:${currentSide} | pnl%:${pnlPercent.toFixed(2)} | sl:${-sl} tp:${tp} | dur:${durationMinutes.toFixed(1)}min | reason:${closeReason || 'HOLD'}`);
 

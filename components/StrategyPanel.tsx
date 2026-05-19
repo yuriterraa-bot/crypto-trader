@@ -43,6 +43,7 @@ export default function StrategyPanel() {
   const [stopLoss, setStopLoss] = useState(1.0);
   const [takeProfit, setTakeProfit] = useState(2.0);
   const [maxDuration, setMaxDuration] = useState(30);
+  const [noTimeout, setNoTimeout] = useState(false); // desativar timeout
   const [savingScalping, setSavingScalping] = useState(false);
 
   useEffect(() => {
@@ -58,7 +59,14 @@ export default function StrategyPanel() {
           if (data.leverage) setLeverage(Number(data.leverage));
           if (data.stop_loss_percent) setStopLoss(Number(data.stop_loss_percent));
           if (data.take_profit_percent) setTakeProfit(Number(data.take_profit_percent));
-          if (data.max_trade_duration_minutes) setMaxDuration(Number(data.max_trade_duration_minutes));
+          const dur = Number(data.max_trade_duration_minutes);
+          if (dur === 0) {
+            setNoTimeout(true);
+            setMaxDuration(30); // valor padrão quando desativado
+          } else if (dur > 0) {
+            setNoTimeout(false);
+            setMaxDuration(dur);
+          }
         }
       } catch (error) {
         console.error('Failed to fetch bot config:', error);
@@ -98,7 +106,7 @@ export default function StrategyPanel() {
         leverage,
         stop_loss_percent: stopLoss,
         take_profit_percent: takeProfit,
-        max_trade_duration_minutes: maxDuration,
+        max_trade_duration_minutes: noTimeout ? 0 : maxDuration,
       };
       
       const { data } = await axios.post('/api/bot/config', payload);
@@ -299,29 +307,6 @@ export default function StrategyPanel() {
               </label>
             </div>
 
-            {alwaysInMarket && (
-              <>
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-orange-500/10 border border-orange-500/20">
-                  <span className="text-orange-400 text-sm">⚠️</span>
-                  <span className="text-xs text-orange-300">Bot sempre terá uma posição aberta. Use com cautela em modo real.</span>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-semibold">Alavancagem AIM</span>
-                    <span className="text-sm font-black text-orange-400">{leverage}x</span>
-                  </div>
-                  <input
-                    type="range" min="1" max="20" step="1"
-                    value={leverage}
-                    onChange={e => setLeverage(parseInt(e.target.value))}
-                    className="w-full h-1.5 rounded-lg appearance-none cursor-pointer bg-orange-500/30 accent-orange-500"
-                  />
-                  <div className="flex justify-between text-[10px] text-muted-foreground">
-                    <span>1x (mínimo)</span>
-                    <span>20x (máximo)</span>
-                  </div>
-                </div>
-              </>
             )}
           </div>
 
@@ -330,7 +315,25 @@ export default function StrategyPanel() {
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-6 flex items-center">
             <Target className="h-4 w-4 mr-2 text-indigo-400" /> Configurações de Scalping
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+
+            {/* Alavancagem */}
+            <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-5 space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-bold text-foreground">Alavancagem</label>
+                <span className="text-lg font-black text-orange-400">{leverage}x</span>
+              </div>
+              <input
+                type="range" min={1} max={20} step={1}
+                value={leverage}
+                onChange={e => setLeverage(parseInt(e.target.value))}
+                className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-orange-500/20 accent-orange-500"
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>1x</span><span>20x</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Alavancagem aplicada ao abrir posições</p>
+            </div>
 
             {/* Stop Loss */}
             <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-5 space-y-3">
@@ -347,7 +350,7 @@ export default function StrategyPanel() {
               <div className="flex justify-between text-[10px] text-muted-foreground">
                 <span>0.1% (apertado)</span><span>5.0% (largo)</span>
               </div>
-              <p className="text-xs text-muted-foreground">Fechar se PnL atingir -{stopLoss.toFixed(1)}% (considerando alavancagem)</p>
+              <p className="text-xs text-muted-foreground">Fechar se PnL atingir -{stopLoss.toFixed(1)}%</p>
             </div>
 
             {/* Take Profit */}
@@ -369,21 +372,54 @@ export default function StrategyPanel() {
             </div>
 
             {/* Max Duration */}
-            <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-5 space-y-3">
+            <div className={`rounded-xl p-5 space-y-3 border ${
+              noTimeout
+                ? 'bg-purple-500/5 border-purple-500/30'
+                : 'bg-indigo-500/5 border-indigo-500/20'
+            }`}>
               <div className="flex justify-between items-center">
                 <label className="text-sm font-bold text-foreground">Tempo máximo</label>
-                <span className="text-lg font-black text-indigo-400">{maxDuration}min</span>
+                <div className="flex items-center gap-2">
+                  {noTimeout
+                    ? <span className="text-lg font-black text-purple-400">∞</span>
+                    : <span className="text-lg font-black text-indigo-400">{maxDuration}min</span>
+                  }
+                </div>
               </div>
-              <input
-                type="range" min={5} max={120} step={5}
-                value={maxDuration}
-                onChange={e => setMaxDuration(parseInt(e.target.value))}
-                className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-indigo-500/20 accent-indigo-500"
-              />
-              <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>5 min</span><span>120 min</span>
+
+              {/* Toggle sem limite */}
+              <div className="flex items-center justify-between py-1">
+                <span className="text-xs text-muted-foreground">Sem limite de tempo</span>
+                <label className="flex items-center cursor-pointer">
+                  <div className={`w-9 h-5 rounded-full relative transition-colors ${
+                    noTimeout ? 'bg-purple-500' : 'bg-muted'
+                  }`}>
+                    <input type="checkbox" className="sr-only" checked={noTimeout}
+                      onChange={e => setNoTimeout(e.target.checked)} />
+                    <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-all ${
+                      noTimeout ? 'left-4' : 'left-0.5'
+                    }`} />
+                  </div>
+                </label>
               </div>
-              <p className="text-xs text-muted-foreground">Fechar posição após {maxDuration} min independente de SL/TP</p>
+
+              {!noTimeout && (
+                <>
+                  <input
+                    type="range" min={5} max={120} step={5}
+                    value={maxDuration}
+                    onChange={e => setMaxDuration(parseInt(e.target.value))}
+                    className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-indigo-500/20 accent-indigo-500"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>5 min</span><span>120 min</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Fechar após {maxDuration} min independente de SL/TP</p>
+                </>
+              )}
+              {noTimeout && (
+                <p className="text-xs text-purple-300">Posição fechada apenas por SL ou TP</p>
+              )}
             </div>
           </div>
         </div>
