@@ -38,12 +38,16 @@ export default function StrategyPanel() {
   const [strategy, setStrategy] = useState<StrategyConfig>(defaultConfig);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [alwaysInMarket, setAlwaysInMarket] = useState(false);
+  const [alwaysInMarket, setAlwaysInMarket] = useState(true);
   const [leverage, setLeverage] = useState(3);
   const [stopLoss, setStopLoss] = useState(1.0);
   const [takeProfit, setTakeProfit] = useState(2.0);
   const [maxDuration, setMaxDuration] = useState(30);
-  const [noTimeout, setNoTimeout] = useState(false); // desativar timeout
+  const [noTimeout, setNoTimeout] = useState(false);
+  const [dcaEnabled, setDcaEnabled] = useState(true);
+  const [dcaStep, setDcaStep] = useState(0.8);
+  const [dcaMaxLevels, setDcaMaxLevels] = useState(2);
+  const [dcaMult, setDcaMult] = useState(1.5);
   const [savingScalping, setSavingScalping] = useState(false);
 
   useEffect(() => {
@@ -60,13 +64,12 @@ export default function StrategyPanel() {
           if (data.stop_loss_percent) setStopLoss(Number(data.stop_loss_percent));
           if (data.take_profit_percent) setTakeProfit(Number(data.take_profit_percent));
           const dur = Number(data.max_trade_duration_minutes);
-          if (dur === 0) {
-            setNoTimeout(true);
-            setMaxDuration(30); // valor padrão quando desativado
-          } else if (dur > 0) {
-            setNoTimeout(false);
-            setMaxDuration(dur);
-          }
+          if (dur === 0) { setNoTimeout(true); setMaxDuration(30); }
+          else if (dur > 0) { setNoTimeout(false); setMaxDuration(dur); }
+          if (data.dca_enabled !== undefined) setDcaEnabled(Boolean(data.dca_enabled));
+          if (data.dca_step_percent) setDcaStep(Number(data.dca_step_percent));
+          if (data.dca_max_levels) setDcaMaxLevels(Number(data.dca_max_levels));
+          if (data.dca_multiplier) setDcaMult(Number(data.dca_multiplier));
         }
       } catch (error) {
         console.error('Failed to fetch bot config:', error);
@@ -107,6 +110,10 @@ export default function StrategyPanel() {
         stop_loss_percent: stopLoss,
         take_profit_percent: takeProfit,
         max_trade_duration_minutes: noTimeout ? 0 : maxDuration,
+        dca_enabled: dcaEnabled,
+        dca_step_percent: dcaStep,
+        dca_max_levels: dcaMaxLevels,
+        dca_multiplier: dcaMult,
       };
       
       const { data } = await axios.post('/api/bot/config', payload);
@@ -422,6 +429,62 @@ export default function StrategyPanel() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* ── DCA / PREÇO MÉDIO ── */}
+        <div className="pt-6 border-t border-border/50">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center justify-between">
+            <span className="flex items-center">
+              <Target className="h-4 w-4 mr-2 text-cyan-400" /> Gestão de Preço Médio (DCA)
+            </span>
+            <label className="flex items-center cursor-pointer gap-2">
+              <span className="text-xs">{dcaEnabled ? '✅ Ativo' : '⭕ Inativo'}</span>
+              <div className={`w-9 h-5 rounded-full relative transition-colors ${dcaEnabled ? 'bg-cyan-500' : 'bg-muted'}`}>
+                <input type="checkbox" className="sr-only" checked={dcaEnabled} onChange={e => setDcaEnabled(e.target.checked)} />
+                <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-all ${dcaEnabled ? 'left-4' : 'left-0.5'}`} />
+              </div>
+            </label>
+          </h3>
+          {dcaEnabled && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Step % */}
+              <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-4 space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-sm font-bold">Gatilho DCA</label>
+                  <span className="text-lg font-black text-cyan-400">{dcaStep.toFixed(1)}%</span>
+                </div>
+                <input type="range" min={0.2} max={3.0} step={0.1} value={dcaStep}
+                  onChange={e => setDcaStep(parseFloat(e.target.value))}
+                  className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-cyan-500/20 accent-cyan-500" />
+                <p className="text-xs text-muted-foreground">Adiciona à posição a cada -{dcaStep.toFixed(1)}% contra</p>
+              </div>
+              {/* Max levels */}
+              <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-4 space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-sm font-bold">Níveis DCA</label>
+                  <span className="text-lg font-black text-cyan-400">{dcaMaxLevels}x</span>
+                </div>
+                <input type="range" min={1} max={5} step={1} value={dcaMaxLevels}
+                  onChange={e => setDcaMaxLevels(parseInt(e.target.value))}
+                  className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-cyan-500/20 accent-cyan-500" />
+                <p className="text-xs text-muted-foreground">Máximo de {dcaMaxLevels} adições à posição</p>
+              </div>
+              {/* Multiplier */}
+              <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-4 space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-sm font-bold">Multiplicador</label>
+                  <span className="text-lg font-black text-cyan-400">{dcaMult.toFixed(1)}x</span>
+                </div>
+                <input type="range" min={1.0} max={3.0} step={0.1} value={dcaMult}
+                  onChange={e => setDcaMult(parseFloat(e.target.value))}
+                  className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-cyan-500/20 accent-cyan-500" />
+                <p className="text-xs text-muted-foreground">Cada nível é {dcaMult.toFixed(1)}x o tamanho anterior</p>
+              </div>
+            </div>
+          )}
+          {!dcaEnabled && (
+            <p className="text-xs text-muted-foreground">DCA desativado — posição fechada no SL sem preço médio.</p>
+          )}
         </div>
 
       </CardContent>
