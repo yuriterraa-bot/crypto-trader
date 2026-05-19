@@ -5,10 +5,10 @@ import {
   createChart,
   ColorType,
   CrosshairMode,
+  CandlestickSeries,
+  LineSeries,
   IChartApi,
   ISeriesApi,
-  CandlestickData,
-  LineData,
 } from 'lightweight-charts';
 
 const TIMEFRAMES = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'];
@@ -30,7 +30,7 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
   const [position, setPosition] = useState<any>(null);
   const [chartReady, setChartReady] = useState(false);
 
-  // ── Inicializar chart (apenas uma vez) ────────────────────────────
+  // ── Init chart (once) ──────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || chartRef.current) return;
 
@@ -54,15 +54,22 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
       height: 480,
     });
 
-    candleRef.current = chart.addCandlestickSeries({
+    // ── lightweight-charts v5 API: addSeries(SeriesType) ──
+    candleRef.current = chart.addSeries(CandlestickSeries, {
       upColor: '#22c55e', downColor: '#ef4444',
       borderUpColor: '#22c55e', borderDownColor: '#ef4444',
       wickUpColor: '#22c55e', wickDownColor: '#ef4444',
     });
 
-    ema9Ref.current = chart.addLineSeries({ color: '#60a5fa', lineWidth: 1, title: 'EMA9' });
-    ema21Ref.current = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, title: 'EMA21' });
-    ema50Ref.current = chart.addLineSeries({ color: '#a855f7', lineWidth: 1, title: 'EMA50' });
+    ema9Ref.current = chart.addSeries(LineSeries, {
+      color: '#60a5fa', lineWidth: 1, title: 'EMA9',
+    });
+    ema21Ref.current = chart.addSeries(LineSeries, {
+      color: '#f59e0b', lineWidth: 1, title: 'EMA21',
+    });
+    ema50Ref.current = chart.addSeries(LineSeries, {
+      color: '#a855f7', lineWidth: 1, title: 'EMA50',
+    });
 
     chartRef.current = chart;
     setChartReady(true);
@@ -85,7 +92,7 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
     };
   }, []);
 
-  // ── Carregar dados ─────────────────────────────────────────────────
+  // ── Load data ──────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!chartReady || !candleRef.current) return;
     setLoading(true);
@@ -98,48 +105,46 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
       const candles: any[] = await res.json();
       if (!Array.isArray(candles) || candles.length === 0) return;
 
-      // ── Candles ──
-      const candleData: CandlestickData[] = candles.map(c => ({
+      // Candles
+      const candleData = candles.map(c => ({
         time: Math.floor(c.openTime / 1000) as any,
         open: c.open, high: c.high, low: c.low, close: c.close,
       }));
       candleRef.current!.setData(candleData);
 
-      // ── EMA helper ──
-      const calcEMA = (period: number): LineData[] => {
+      // EMA
+      const calcEMA = (period: number) => {
         const closes = candles.map(c => c.close);
         if (closes.length < period) return [];
         const k = 2 / (period + 1);
-        const result: LineData[] = [];
+        const result: { time: any; value: number }[] = [];
         let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
-        result.push({ time: Math.floor(candles[period - 1].openTime / 1000) as any, value: ema });
+        result.push({ time: Math.floor(candles[period - 1].openTime / 1000), value: ema });
         for (let i = period; i < closes.length; i++) {
           ema = closes[i] * k + ema * (1 - k);
-          result.push({ time: Math.floor(candles[i].openTime / 1000) as any, value: ema });
+          result.push({ time: Math.floor(candles[i].openTime / 1000), value: ema });
         }
         return result;
       };
-
       ema9Ref.current?.setData(calcEMA(9));
       ema21Ref.current?.setData(calcEMA(21));
       ema50Ref.current?.setData(calcEMA(50));
       chartRef.current?.timeScale().fitContent();
 
-      // ── Posições abertas como markers ──
+      // Positions markers
       try {
         const posRes = await fetch('/api/binance/positions', { cache: 'no-store' });
         const posData = await posRes.json();
-        const openPositions = Array.isArray(posData)
+        const openPos = Array.isArray(posData)
           ? posData.filter((p: any) =>
               p.symbol === selectedSymbol &&
               Math.abs(parseFloat(p.positionAmt || '0')) > 0.0001
             )
           : [];
-
-        setPosition(openPositions[0] || null);
+        setPosition(openPos[0] || null);
 
         const lastTime = Math.floor(candles[candles.length - 1].openTime / 1000) as any;
-        const markers = openPositions.map((p: any) => {
+        const markers = openPos.map((p: any) => {
           const isLong = parseFloat(p.positionAmt) > 0;
           return {
             time: lastTime,
@@ -150,22 +155,19 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
             size: 2,
           };
         });
-        if (markers.length > 0) candleRef.current?.setMarkers(markers as any);
-        else candleRef.current?.setMarkers([]);
-      } catch { /* ignore position fetch errors */ }
+        candleRef.current?.setMarkers(markers.length > 0 ? markers as any : []);
+      } catch { /* ignore */ }
 
-      // ── Preço e variação ──
       const last = candles[candles.length - 1];
       setPrice(last.close);
       setChange(((last.close - candles[0].close) / candles[0].close) * 100);
     } catch (e) {
-      console.error('[TradingChart] loadData error:', e);
+      console.error('[TradingChart] error:', e);
     } finally {
       setLoading(false);
     }
   }, [chartReady, selectedSymbol, selectedTf]);
 
-  // Carregar dados quando chart estiver pronto ou parâmetros mudarem
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 30000);
@@ -178,21 +180,12 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
     : 0;
 
   return (
-    <div style={{
-      background: '#12121a',
-      border: '1px solid #1e1e2e',
-      borderRadius: '12px',
-      padding: '16px',
-    }}>
+    <div style={{ background: '#12121a', border: '1px solid #1e1e2e', borderRadius: '12px', padding: '16px' }}>
+
       {/* ── Header ── */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginBottom: '12px', flexWrap: 'wrap', gap: '8px',
-      }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#e2e8f0' }}>
-            📈 {selectedSymbol}
-          </span>
+          <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#e2e8f0' }}>📈 {selectedSymbol}</span>
           {price > 0 && (
             <>
               <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#e2e8f0', fontFamily: 'monospace' }}>
@@ -206,60 +199,51 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
         </div>
 
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Symbol buttons */}
           {SYMBOLS.map(s => (
             <button key={s} onClick={() => setSelectedSymbol(s)} style={{
               padding: '4px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer',
               background: selectedSymbol === s ? '#6366f1' : '#1e1e2e',
               color: '#e2e8f0', fontSize: '12px',
               fontWeight: selectedSymbol === s ? 'bold' : 'normal',
-              transition: 'background 0.15s',
             }}>
               {s.replace('USDT', '')}
             </button>
           ))}
-
           <div style={{ width: '1px', height: '20px', background: '#2e2e3e', margin: '0 2px' }} />
-
-          {/* Timeframe buttons */}
           {TIMEFRAMES.map(tf => (
             <button key={tf} onClick={() => setSelectedTf(tf)} style={{
               padding: '3px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer',
               background: selectedTf === tf ? '#6366f1' : '#1e1e2e',
               color: '#e2e8f0', fontSize: '11px',
               fontWeight: selectedTf === tf ? 'bold' : 'normal',
-              transition: 'background 0.15s',
             }}>
               {tf}
             </button>
           ))}
-
-          {/* Refresh */}
           <button onClick={loadData} title="Atualizar" style={{
             padding: '4px 10px', borderRadius: '6px', border: '1px solid #2e2e3e',
             cursor: 'pointer', background: 'transparent',
             color: loading ? '#6366f1' : '#94a3b8', fontSize: '14px',
-            transition: 'color 0.15s',
           }}>
             ⟳
           </button>
         </div>
       </div>
 
-      {/* ── EMA Legend ── */}
+      {/* ── Legend ── */}
       <div style={{ display: 'flex', gap: '16px', marginBottom: '8px', fontSize: '11px', flexWrap: 'wrap' }}>
         <span style={{ color: '#60a5fa' }}>━ EMA 9</span>
         <span style={{ color: '#f59e0b' }}>━ EMA 21</span>
         <span style={{ color: '#a855f7' }}>━ EMA 50</span>
-        <span style={{ color: '#22c55e' }}>▲ LONG aberta</span>
-        <span style={{ color: '#ef4444' }}>▼ SHORT aberta</span>
+        <span style={{ color: '#22c55e' }}>▲ LONG</span>
+        <span style={{ color: '#ef4444' }}>▼ SHORT</span>
         {loading && <span style={{ color: '#6366f1' }}>• Atualizando...</span>}
       </div>
 
       {/* ── Chart ── */}
       <div ref={containerRef} style={{ width: '100%', height: '480px', minWidth: 0 }} />
 
-      {/* ── Posição aberta ── */}
+      {/* ── Position bar ── */}
       {position && (
         <div style={{
           marginTop: '12px', padding: '12px', background: '#0a0a0f', borderRadius: '8px',
