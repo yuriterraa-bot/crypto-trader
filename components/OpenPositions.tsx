@@ -131,33 +131,45 @@ export default function OpenPositions() {
                 {positions.map((p: any) => {
                   const isLong = parseFloat(p.positionAmt) > 0;
                   const currentSide = isLong ? 'LONG' : 'SHORT';
-                  const pnlUSDT = parseFloat(p.unrealizedProfit || p.unRealizedProfit || '0');
+                  const pnlUSDT = parseFloat(p.unRealizedProfit || p.unrealizedProfit || '0');
                   const entryPrice = parseFloat(p.entryPrice || '0');
                   const markPrice = parseFloat(p.markPrice || entryPrice.toString());
-                  const lev = config.leverage || 3;
+                  // Use leverage from Binance position directly
+                  const lev = parseFloat(p.leverage) || config.leverage || 3;
+                  const slPct = config.stop_loss_percent || 1.0;
+                  const tpPct = config.take_profit_percent || 2.0;
+
                   const pnlPct = entryPrice > 0
                     ? (isLong
                       ? (markPrice - entryPrice) / entryPrice * 100 * lev
                       : (entryPrice - markPrice) / entryPrice * 100 * lev)
                     : 0;
 
-                  // Buscar trade com SL/TP do Supabase
+                  // Calcular SL/TP a partir do preço de entrada + config (sem depender do Supabase)
                   const trade = trades.find(t => t.symbol === p.symbol);
-                  const slPrice = trade?.stop_loss || (isLong
-                    ? entryPrice * (1 - (config.stop_loss_percent || 1) / 100 / lev)
-                    : entryPrice * (1 + (config.stop_loss_percent || 1) / 100 / lev));
-                  const tpPrice = trade?.take_profit || (isLong
-                    ? entryPrice * (1 + (config.take_profit_percent || 2) / 100 / lev)
-                    : entryPrice * (1 - (config.take_profit_percent || 2) / 100 / lev));
+                  const slPrice = trade?.stop_loss != null
+                    ? parseFloat(trade.stop_loss)
+                    : isLong
+                      ? entryPrice * (1 - slPct / 100 / lev)
+                      : entryPrice * (1 + slPct / 100 / lev);
+                  const tpPrice = trade?.take_profit != null
+                    ? parseFloat(trade.take_profit)
+                    : isLong
+                      ? entryPrice * (1 + tpPct / 100 / lev)
+                      : entryPrice * (1 - tpPct / 100 / lev);
 
-                  // Progresso entre SL e TP
-                  const range = tpPrice - slPrice;
-                  const progress = range !== 0
-                    ? Math.min(100, Math.max(0, ((markPrice - slPrice) / range) * 100))
+                  // Progresso entre SL e TP (SHORT: SL > entry > TP, então inverter range)
+                  const lo = Math.min(slPrice, tpPrice);
+                  const hi = Math.max(slPrice, tpPrice);
+                  const range = hi - lo;
+                  const progress = range > 0
+                    ? Math.min(100, Math.max(0, ((markPrice - lo) / range) * 100))
                     : 50;
 
                   // Tempo aberto
-                  const openTime = trade?.open_time ? new Date(trade.open_time).getTime() : null;
+                  const openTime = trade?.open_time
+                    ? new Date(trade.open_time).getTime()
+                    : p.updateTime ? parseInt(p.updateTime) : null;
                   const durationSec = openTime ? Math.floor((now - openTime) / 1000) : null;
                   const durationStr = durationSec !== null
                     ? durationSec < 60

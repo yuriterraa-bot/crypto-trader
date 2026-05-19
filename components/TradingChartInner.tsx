@@ -92,18 +92,35 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
     };
   }, []);
 
+  const [botConfig, setBotConfig] = useState<any>({ stop_loss_percent: 1.0, take_profit_percent: 2.0 });
+  // Refs for price lines so we can remove/re-add them
+  const priceLineRefs = useRef<any[]>([]);
+
   // ── Load data ──────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!chartReady || !candleRef.current) return;
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/binance/klines?symbol=${selectedSymbol}&interval=${selectedTf}&limit=200`,
-        { cache: 'no-store' }
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const candles: any[] = await res.json();
+      // Fetch in parallel: candles + positions + config
+      const [candleRes, posRes, cfgRes] = await Promise.all([
+        fetch(`/api/binance/klines?symbol=${selectedSymbol}&interval=${selectedTf}&limit=200`, { cache: 'no-store' }),
+        fetch('/api/binance/positions', { cache: 'no-store' }),
+        fetch('/api/bot/config', { cache: 'no-store' }),
+      ]);
+
+      if (!candleRes.ok) throw new Error(`HTTP ${candleRes.status}`);
+      const candles: any[] = await candleRes.json();
       if (!Array.isArray(candles) || candles.length === 0) return;
+
+      // Parse config
+      let cfg = botConfig;
+      try {
+        const cfgData = await cfgRes.json();
+        if (cfgData?.stop_loss_percent) {
+          cfg = cfgData;
+          setBotConfig(cfgData);
+        }
+      } catch {}
 
       // Candles
       const candleData = candles.map(c => ({
@@ -131,9 +148,14 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
       ema50Ref.current?.setData(calcEMA(50));
       chartRef.current?.timeScale().fitContent();
 
-      // Positions markers
+      // ── Remove linhas anteriores ──
+      priceLineRefs.current.forEach(pl => {
+        try { candleRef.current?.removePriceLine(pl); } catch {}
+      });
+      priceLineRefs.current = [];
+
+      // ── Positions: markers + price lines ──
       try {
-        const posRes = await fetch('/api/binance/positions', { cache: 'no-store' });
         const posData = await posRes.json();
         const openPos = Array.isArray(posData)
           ? posData.filter((p: any) =>
@@ -156,6 +178,54 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
           };
         });
         candleRef.current?.setMarkers(markers.length > 0 ? markers as any : []);
+
+        // Desenhar linhas de preço para cada posição
+        openPos.forEach((p: any) => {
+          const isLong = parseFloat(p.positionAmt) > 0;
+          const entry = parseFloat(p.entryPrice);
+          const lev = parseFloat(p.leverage) || cfg.leverage || 3;
+          const slPct = parseFloat(cfg.stop_loss_percent) || 1.0;
+          const tpPct = parseFloat(cfg.take_profit_percent) || 2.0;
+
+          const slPrice = isLong
+            ? entry * (1 - slPct / 100 / lev)
+            : entry * (1 + slPct / 100 / lev);
+          const tpPrice = isLong
+            ? entry * (1 + tpPct / 100 / lev)
+            : entry * (1 - tpPct / 100 / lev);
+
+          // Linha de entrada (branca tracejada)
+          const entryLine = candleRef.current!.createPriceLine({
+            price: entry,
+            color: '#94a3b8',
+            lineWidth: 1,
+            lineStyle: 2, // dashed
+            axisLabelVisible: true,
+            title: `Entry ${isLong ? 'LONG' : 'SHORT'}`,
+          });
+
+          // Linha de SL (vermelha)
+          const slLine = candleRef.current!.createPriceLine({
+            price: slPrice,
+            color: '#ef4444',
+            lineWidth: 1,
+            lineStyle: 2, // dashed
+            axisLabelVisible: true,
+            title: `SL ${slPct}%`,
+          });
+
+          // Linha de TP (verde)
+          const tpLine = candleRef.current!.createPriceLine({
+            price: tpPrice,
+            color: '#22c55e',
+            lineWidth: 1,
+            lineStyle: 2, // dashed
+            axisLabelVisible: true,
+            title: `TP ${tpPct}%`,
+          });
+
+          priceLineRefs.current.push(entryLine, slLine, tpLine);
+        });
       } catch { /* ignore */ }
 
       const last = candles[candles.length - 1];
@@ -166,7 +236,7 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
     } finally {
       setLoading(false);
     }
-  }, [chartReady, selectedSymbol, selectedTf]);
+  }, [chartReady, selectedSymbol, selectedTf, botConfig]);
 
   useEffect(() => {
     loadData();
@@ -235,6 +305,9 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
         <span style={{ color: '#60a5fa' }}>━ EMA 9</span>
         <span style={{ color: '#f59e0b' }}>━ EMA 21</span>
         <span style={{ color: '#a855f7' }}>━ EMA 50</span>
+        <span style={{ color: '#94a3b8' }}>╌ Entry</span>
+        <span style={{ color: '#ef4444' }}>╌ SL</span>
+        <span style={{ color: '#22c55e' }}>╌ TP</span>
         <span style={{ color: '#22c55e' }}>▲ LONG</span>
         <span style={{ color: '#ef4444' }}>▼ SHORT</span>
         {loading && <span style={{ color: '#6366f1' }}>• Atualizando...</span>}
@@ -244,37 +317,31 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
       <div ref={containerRef} style={{ width: '100%', height: '480px', minWidth: 0 }} />
 
       {/* ── Position bar ── */}
-      {position && (
-        <div style={{
-          marginTop: '12px', padding: '12px', background: '#0a0a0f', borderRadius: '8px',
-          border: `1px solid ${isLong ? '#22c55e44' : '#ef444444'}`,
-          display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '13px',
-        }}>
-          <span style={{ color: isLong ? '#22c55e' : '#ef4444', fontWeight: 'bold' }}>
-            {isLong ? '▲ LONG' : '▼ SHORT'} {position.leverage}x
-          </span>
-          <span style={{ color: '#94a3b8' }}>
-            Entrada: <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
-              ${parseFloat(position.entryPrice).toFixed(2)}
+      {position && (() => {
+        const _entry = parseFloat(position.entryPrice);
+        const _lev = parseFloat(position.leverage) || botConfig.leverage || 3;
+        const _sl = parseFloat(botConfig.stop_loss_percent) || 1.0;
+        const _tp = parseFloat(botConfig.take_profit_percent) || 2.0;
+        const _slPrice = isLong ? _entry*(1-_sl/100/_lev) : _entry*(1+_sl/100/_lev);
+        const _tpPrice = isLong ? _entry*(1+_tp/100/_lev) : _entry*(1-_tp/100/_lev);
+        return (
+          <div style={{
+            marginTop: '12px', padding: '12px', background: '#0a0a0f', borderRadius: '8px',
+            border: `1px solid ${isLong ? '#22c55e44' : '#ef444444'}`,
+            display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '13px', alignItems: 'center',
+          }}>
+            <span style={{ color: isLong ? '#22c55e' : '#ef4444', fontWeight: 'bold' }}>
+              {isLong ? '▲ LONG' : '▼ SHORT'} {position.leverage}x
             </span>
-          </span>
-          <span style={{ color: '#94a3b8' }}>
-            Mark: <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
-              ${parseFloat(position.markPrice || position.entryPrice).toFixed(2)}
-            </span>
-          </span>
-          <span style={{ color: '#94a3b8' }}>
-            Qtd: <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
-              {Math.abs(parseFloat(position.positionAmt))}
-            </span>
-          </span>
-          <span style={{ color: '#94a3b8' }}>
-            PnL: <span style={{ color: pnl >= 0 ? '#22c55e' : '#ef4444', fontWeight: 'bold', fontFamily: 'monospace' }}>
-              {pnl >= 0 ? '+' : ''}${pnl.toFixed(4)} USDT
-            </span>
-          </span>
-        </div>
-      )}
+            <span style={{ color: '#94a3b8' }}>Entrada: <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>${_entry.toFixed(2)}</span></span>
+            <span style={{ color: '#94a3b8' }}>Mark: <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>${parseFloat(position.markPrice || position.entryPrice).toFixed(2)}</span></span>
+            <span style={{ color: '#ef4444' }}>SL: <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>${_slPrice.toFixed(2)}</span></span>
+            <span style={{ color: '#22c55e' }}>TP: <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>${_tpPrice.toFixed(2)}</span></span>
+            <span style={{ color: '#94a3b8' }}>Qtd: <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{Math.abs(parseFloat(position.positionAmt))}</span></span>
+            <span style={{ color: '#94a3b8' }}>PnL: <span style={{ color: pnl >= 0 ? '#22c55e' : '#ef4444', fontWeight: 'bold', fontFamily: 'monospace' }}>{pnl >= 0 ? '+' : ''}${pnl.toFixed(4)} USDT</span></span>
+          </div>
+        );
+      })()}
     </div>
   );
 }
