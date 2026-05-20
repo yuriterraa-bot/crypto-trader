@@ -25,11 +25,17 @@ const SimpleTabs = ({ value, onChange, options }: { value: string, onChange: (va
   </div>
 );
 
-export default function OrderTicket() {
-  const [symbol, setSymbol] = useState('BTCUSDT');
+export default function OrderTicket({ activeSymbol }: { activeSymbol?: string } = {}) {
+  const [symbol, setSymbol] = useState(activeSymbol || 'BTCUSDT');
   const [currentPrice, setCurrentPrice] = useState(0);
   const [orderType, setOrderType] = useState('MARKET');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
+
+  useEffect(() => {
+    if (activeSymbol) {
+      setSymbol(activeSymbol);
+    }
+  }, [activeSymbol]);
   
   const [leverage, setLeverage] = useState(10);
   const [sizeUSDT, setSizeUSDT] = useState('');

@@ -1,5 +1,5 @@
 /**
- * lib/indicators.ts
+ * lib/indicators/base.ts
  * Cálculo puro de indicadores técnicos em TypeScript
  */
 

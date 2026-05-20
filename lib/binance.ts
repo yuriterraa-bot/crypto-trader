@@ -263,3 +263,83 @@ export const calculateQuantity = (
   return Math.floor(raw * 10) / 10;                                    // 1 casa decimal
 };
 
+/**
+ * Busca dados de ticker 24h para um símbolo
+ */
+export const fetchTicker24h = async (symbol: string) => {
+  try {
+    const response = await api.get(`/fapi/v1/ticker/24hr?symbol=${symbol}`);
+    return {
+      priceChange: parseFloat(response.data.priceChange),
+      priceChangePercent: parseFloat(response.data.priceChangePercent),
+      weightedAvgPrice: parseFloat(response.data.weightedAvgPrice),
+      lastPrice: parseFloat(response.data.lastPrice),
+      volume: parseFloat(response.data.volume),
+      quoteVolume: parseFloat(response.data.quoteVolume),
+      highPrice: parseFloat(response.data.highPrice),
+      lowPrice: parseFloat(response.data.lowPrice),
+    };
+  } catch (error) {
+    console.error(`Binance API Error (fetchTicker24h) for ${symbol}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Busca a taxa de financiamento (Funding Rate) atual e preço premium do ativo
+ */
+export const fetchFundingRate = async (symbol: string) => {
+  try {
+    const response = await api.get(`/fapi/v1/premiumIndex?symbol=${symbol}`);
+    return {
+      markPrice: parseFloat(response.data.markPrice),
+      indexPrice: parseFloat(response.data.indexPrice),
+      estimatedSettlePrice: parseFloat(response.data.estimatedSettlePrice),
+      lastFundingRate: parseFloat(response.data.lastFundingRate),
+      nextFundingTime: response.data.nextFundingTime,
+    };
+  } catch (error) {
+    console.error(`Binance API Error (fetchFundingRate) for ${symbol}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Busca o Open Interest atual para um símbolo
+ */
+export const fetchOpenInterest = async (symbol: string) => {
+  try {
+    const response = await api.get(`/fapi/v1/openInterest?symbol=${symbol}`);
+    return {
+      openInterest: parseFloat(response.data.openInterest),
+      symbol: response.data.symbol,
+    };
+  } catch (error) {
+    console.error(`Binance API Error (fetchOpenInterest) for ${symbol}:`, error);
+    return { openInterest: 0, symbol };
+  }
+};
+
+/**
+ * Busca a proporção de posições Long/Short globais
+ */
+export const fetchLongShortRatio = async (symbol: string, period = '5m') => {
+  try {
+    const response = await api.get(`/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=${period}&limit=1`);
+    if (response.data && response.data.length > 0) {
+      const data = response.data[0];
+      return {
+        longShortRatio: parseFloat(data.longShortRatio),
+        longAccount: parseFloat(data.longAccount),
+        shortAccount: parseFloat(data.shortAccount),
+        timestamp: data.timestamp,
+      };
+    }
+    return { longShortRatio: 1.0, longAccount: 0.5, shortAccount: 0.5, timestamp: Date.now() };
+  } catch (error) {
+    console.error(`Binance API Error (fetchLongShortRatio) for ${symbol}:`, error);
+    return { longShortRatio: 1.0, longAccount: 0.5, shortAccount: 0.5, timestamp: Date.now() };
+  }
+};
+
+

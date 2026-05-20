@@ -1,86 +1,60 @@
-import { Candle, OrderBlock, FVG, BOS, CHoCH } from '@/types';
+export interface SMCResult {
+  bos: { direction: 'BULLISH' | 'BEARISH'; price: number } | null;
+  choch: { direction: 'BULLISH' | 'BEARISH'; price: number } | null;
+  fvgs: { top: number; bottom: number; direction: 'BULLISH' | 'BEARISH'; filled: boolean }[];
+  orderBlocks: { top: number; bottom: number; direction: 'BULLISH' | 'BEARISH' }[];
+}
 
-export const calculateSMC = (candles: Candle[]) => {
-  const orderBlocks: OrderBlock[] = [];
-  const fvgs: FVG[] = [];
-  let bos: BOS | null = null;
-  let choch: CHoCH | null = null;
-
-  if (candles.length < 5) return { orderBlocks, fvgs, bos, choch };
-
-  let lastSwingHigh = candles[0].high;
-  let lastSwingLow = candles[0].low;
-  let currentTrend: 'bullish' | 'bearish' = 'bullish';
-
-  for (let i = 2; i < candles.length; i++) {
-    const c0 = candles[i - 2];
-    const c1 = candles[i - 1];
-    const c2 = candles[i];
-
-    // FVG Detection
-    if (c0.high < c2.low) {
-      fvgs.push({ type: 'bullish', top: c2.low, bottom: c0.high, timestamp: c1.openTime, filled: false });
-    } else if (c0.low > c2.high) {
-      fvgs.push({ type: 'bearish', top: c0.low, bottom: c2.high, timestamp: c1.openTime, filled: false });
+export function calculateSMC(candles: any[]): SMCResult {
+  if (candles.length < 10) return { bos: null, choch: null, fvgs: [], orderBlocks: [] };
+  const slice = candles.slice(-30);
+  const n = slice.length;
+  // Fair Value Gaps: gap between candle[i-2].high and candle[i].low (bullish) or vice versa
+  const fvgs: SMCResult['fvgs'] = [];
+  for (let i = 2; i < n; i++) {
+    const h0 = parseFloat(slice[i - 2].high);
+    const l2 = parseFloat(slice[i].low);
+    if (l2 > h0) {
+      const filled = slice.slice(i).some((c: any) => parseFloat(c.low) <= l2);
+      fvgs.push({ top: l2, bottom: h0, direction: 'BULLISH', filled });
     }
-
-    // Swing High/Low updates & BOS / CHoCH detection
-    // Simple swing detection: lower than prev and next
-    const isSwingLow = c1.low < c0.low && c1.low < c2.low;
-    const isSwingHigh = c1.high > c0.high && c1.high > c2.high;
-
-    if (isSwingHigh) {
-      if (currentTrend === 'bullish' && c1.high > lastSwingHigh) {
-        bos = { direction: 'bullish', price: c1.high, timestamp: c1.openTime };
-        lastSwingHigh = c1.high;
-      } else if (currentTrend === 'bearish' && c1.high > lastSwingHigh) {
-        choch = { direction: 'bullish', price: c1.high, timestamp: c1.openTime };
-        currentTrend = 'bullish';
-        lastSwingHigh = c1.high;
-      } else {
-        lastSwingHigh = c1.high;
+    const l0 = parseFloat(slice[i - 2].low);
+    const h2 = parseFloat(slice[i].high);
+    if (h2 < l0) {
+      const filled = slice.slice(i).some((c: any) => parseFloat(c.high) >= h2);
+      fvgs.push({ top: l0, bottom: h2, direction: 'BEARISH', filled });
+    }
+  }
+  // BOS: Break of Structure — price breaks recent swing high/low
+  const highs = slice.map((c: any) => parseFloat(c.high));
+  const lows = slice.map((c: any) => parseFloat(c.low));
+  const recentHigh = Math.max(...highs.slice(-10, -1));
+  const recentLow = Math.min(...lows.slice(-10, -1));
+  const lastHigh = highs[n - 1];
+  const lastLow = lows[n - 1];
+  let bos: SMCResult['bos'] = null;
+  let choch: SMCResult['choch'] = null;
+  if (lastHigh > recentHigh) bos = { direction: 'BULLISH', price: recentHigh };
+  else if (lastLow < recentLow) bos = { direction: 'BEARISH', price: recentLow };
+  // CHoCH: Change of Character (opposite BOS)
+  if (bos?.direction === 'BULLISH' && lastLow < recentLow) choch = { direction: 'BEARISH', price: recentLow };
+  else if (bos?.direction === 'BEARISH' && lastHigh > recentHigh) choch = { direction: 'BULLISH', price: recentHigh };
+  // Order blocks: last bearish candle before bullish BOS, last bullish before bearish BOS
+  const orderBlocks: SMCResult['orderBlocks'] = [];
+  if (bos?.direction === 'BULLISH') {
+    for (let i = n - 3; i >= n - 8 && i >= 0; i--) {
+      if (parseFloat(slice[i].close) < parseFloat(slice[i].open)) {
+        orderBlocks.push({ top: parseFloat(slice[i].open), bottom: parseFloat(slice[i].close), direction: 'BULLISH' });
+        break;
       }
     }
-
-    if (isSwingLow) {
-      if (currentTrend === 'bearish' && c1.low < lastSwingLow) {
-        bos = { direction: 'bearish', price: c1.low, timestamp: c1.openTime };
-        lastSwingLow = c1.low;
-      } else if (currentTrend === 'bullish' && c1.low < lastSwingLow) {
-        choch = { direction: 'bearish', price: c1.low, timestamp: c1.openTime };
-        currentTrend = 'bearish';
-        lastSwingLow = c1.low;
-      } else {
-        lastSwingLow = c1.low;
-      }
-    }
-
-    // Order Block Detection (simplified)
-    // Bullish OB: last bearish candle before a strong bullish move (that creates FVG or breaks structure)
-    if (c0.close < c0.open && c1.close > c1.open && c2.close > c2.open) {
-      const isStrongMove = (c2.close - c1.open) > (c0.open - c0.close) * 1.5;
-      if (isStrongMove) {
-        orderBlocks.push({ type: 'bullish', high: c0.high, low: c0.low, price: c0.low, timestamp: c0.openTime });
-      }
-    }
-
-    // Bearish OB: last bullish candle before a strong bearish move
-    if (c0.close > c0.open && c1.close < c1.open && c2.close < c2.open) {
-      const isStrongMove = (c1.open - c2.close) > (c0.close - c0.open) * 1.5;
-      if (isStrongMove) {
-        orderBlocks.push({ type: 'bearish', high: c0.high, low: c0.low, price: c0.high, timestamp: c0.openTime });
+  } else if (bos?.direction === 'BEARISH') {
+    for (let i = n - 3; i >= n - 8 && i >= 0; i--) {
+      if (parseFloat(slice[i].close) > parseFloat(slice[i].open)) {
+        orderBlocks.push({ top: parseFloat(slice[i].close), bottom: parseFloat(slice[i].open), direction: 'BEARISH' });
+        break;
       }
     }
   }
-
-  // Check FVG filling
-  const currentPrice = candles[candles.length - 1].close;
-  fvgs.forEach(fvg => {
-    if (!fvg.filled) {
-      if (fvg.type === 'bullish' && currentPrice <= fvg.bottom) fvg.filled = true;
-      if (fvg.type === 'bearish' && currentPrice >= fvg.top) fvg.filled = true;
-    }
-  });
-
-  return { orderBlocks, fvgs, bos, choch };
-};
+  return { bos, choch, fvgs: fvgs.slice(0, 5), orderBlocks };
+}
