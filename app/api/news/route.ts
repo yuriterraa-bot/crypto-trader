@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { fetchNews, analyzeNewsSentiment } from '@/lib/news/newsService';
 
+export const dynamic = 'force-dynamic';
+
 // In-memory cache
 let cachedNews: any = null;
 let lastFetch = 0;

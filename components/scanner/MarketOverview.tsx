@@ -167,7 +167,7 @@ export default function MarketOverview({ results, isLoading }: MarketOverviewPro
               </div>
               <div className="flex items-center gap-1 text-emerald-400 text-xs font-bold bg-emerald-500/10 px-2 py-0.5 rounded">
                 <TrendingUp className="w-3.5 h-3.5" />
-                <span>+{topGainer.change24h.toFixed(2)}%</span>
+                <span>+{(topGainer.change24h || 0).toFixed(2)}%</span>
               </div>
             </div>
 
@@ -178,7 +178,7 @@ export default function MarketOverview({ results, isLoading }: MarketOverviewPro
               </div>
               <div className="flex items-center gap-1 text-rose-400 text-xs font-bold bg-rose-500/10 px-2 py-0.5 rounded">
                 <TrendingDown className="w-3.5 h-3.5" />
-                <span>{topLoser.change24h.toFixed(2)}%</span>
+                <span>{(topLoser.change24h || 0).toFixed(2)}%</span>
               </div>
             </div>
           </div>

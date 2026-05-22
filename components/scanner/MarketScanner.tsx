@@ -87,8 +87,9 @@ export default function MarketScanner({ results, isLoading, onSelectAsset }: Mar
     return price.toLocaleString('en-US', { minimumFractionDigits: 6, maximumFractionDigits: 6 });
   };
 
-  const formatFunding = (rate: number) => {
-    const pct = rate * 100;
+  const formatFunding = (rate: number | null | undefined) => {
+    const cleanRate = rate || 0;
+    const pct = cleanRate * 100;
     return `${pct >= 0 ? '+' : ''}${pct.toFixed(4)}%`;
   };
 
@@ -201,7 +202,8 @@ export default function MarketScanner({ results, isLoading, onSelectAsset }: Mar
               </tr>
             ) : (
               sortedResults.map((item) => {
-                const isBullish = item.change24h >= 0;
+                const cleanChange = item.change24h || 0;
+                const isBullish = cleanChange >= 0;
                 const score = item.technicalScore || 0;
                 
                 // Calculate percentage score visual placement
@@ -231,7 +233,7 @@ export default function MarketScanner({ results, isLoading, onSelectAsset }: Mar
                     <td className="py-3.5 px-4 text-right font-mono text-xs font-bold">
                       <div className={`flex items-center justify-end gap-1 ${isBullish ? 'text-emerald-400' : 'text-rose-400'}`}>
                         {isBullish ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                        <span>{isBullish ? '+' : ''}{item.change24h.toFixed(2)}%</span>
+                        <span>{isBullish ? '+' : ''}{cleanChange.toFixed(2)}%</span>
                       </div>
                     </td>
                     
@@ -266,13 +268,13 @@ export default function MarketScanner({ results, isLoading, onSelectAsset }: Mar
                     {/* Technical Confluence Summary */}
                     <td className="py-3.5 px-4 text-center text-xs text-slate-400">
                       <span className="font-semibold text-slate-300">RSI: </span>
-                      <span className={item.indicators.rsi.value > 60 ? 'text-emerald-400' : item.indicators.rsi.value < 40 ? 'text-rose-400' : 'text-slate-400'}>
-                        {Math.round(item.indicators.rsi.value)}
+                      <span className={(item.indicators?.rsi?.value || 50) > 60 ? 'text-emerald-400' : (item.indicators?.rsi?.value || 50) < 40 ? 'text-rose-400' : 'text-slate-400'}>
+                        {Math.round(item.indicators?.rsi?.value || 50)}
                       </span>
                       <span className="mx-1 text-slate-600">|</span>
                       <span className="font-semibold text-slate-300">MACD: </span>
-                      <span className={item.indicators.macd.trend === 'BULLISH' ? 'text-emerald-400' : item.indicators.macd.trend === 'BEARISH' ? 'text-rose-400' : 'text-slate-400'}>
-                        {item.indicators.macd.trend === 'BULLISH' ? 'Alta' : item.indicators.macd.trend === 'BEARISH' ? 'Baixa' : 'Neutro'}
+                      <span className={item.indicators?.macd?.trend === 'BULLISH' ? 'text-emerald-400' : item.indicators?.macd?.trend === 'BEARISH' ? 'text-rose-400' : 'text-slate-400'}>
+                        {item.indicators?.macd?.trend === 'BULLISH' ? 'Alta' : item.indicators?.macd?.trend === 'BEARISH' ? 'Baixa' : 'Neutro'}
                       </span>
                     </td>
 
@@ -285,15 +287,15 @@ export default function MarketScanner({ results, isLoading, onSelectAsset }: Mar
 
                     {/* Funding Rate */}
                     <td className="py-3.5 px-4 text-right font-mono text-xs">
-                      <span className={item.derivatives.fundingRate > 0 ? 'text-emerald-400/90' : item.derivatives.fundingRate < 0 ? 'text-rose-400/90' : 'text-slate-400'}>
-                        {formatFunding(item.derivatives.fundingRate)}
+                      <span className={(item.derivatives?.fundingRate || 0) > 0 ? 'text-emerald-400/90' : (item.derivatives?.fundingRate || 0) < 0 ? 'text-rose-400/90' : 'text-slate-400'}>
+                        {formatFunding(item.derivatives?.fundingRate)}
                       </span>
                     </td>
 
                     {/* Long/Short Ratio */}
                     <td className="py-3.5 px-4 text-right font-mono text-xs font-bold">
-                      <span className={item.derivatives.longShortRatio > 1.1 ? 'text-emerald-400' : item.derivatives.longShortRatio < 0.9 ? 'text-rose-400' : 'text-slate-300'}>
-                        {item.derivatives.longShortRatio.toFixed(2)}
+                      <span className={(item.derivatives?.longShortRatio || 1) > 1.1 ? 'text-emerald-400' : (item.derivatives?.longShortRatio || 1) < 0.9 ? 'text-rose-400' : 'text-slate-300'}>
+                        {(item.derivatives?.longShortRatio || 1.0).toFixed(2)}
                       </span>
                     </td>
 

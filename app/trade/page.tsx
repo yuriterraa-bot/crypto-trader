@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import TradingChart from '@/components/TradingChart';
 import OrderTicket from '@/components/OrderTicket';
@@ -15,6 +15,18 @@ const COMMON_SYMBOLS = [
 export default function TradePage() {
   const [activeSymbol, setActiveSymbol] = useState('BTCUSDT');
   const [activeSubTab, setActiveSubTab] = useState<'POSITIONS' | 'HISTORY'>('POSITIONS');
+  const [binanceMode, setBinanceMode] = useState<'demo' | 'real'>('demo');
+
+  useEffect(() => {
+    fetch('/api/bot/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.binance_mode) {
+          setBinanceMode(data.binance_mode);
+        }
+      })
+      .catch(err => console.error('Error fetching bot config:', err));
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#06080c] text-slate-100 flex flex-col font-sans">
@@ -51,7 +63,9 @@ export default function TradePage() {
           </div>
 
           <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-            <span className="bg-slate-950 border border-slate-900 rounded px-2 py-0.5">Binance Futures Testnet</span>
+            <span className="bg-slate-950 border border-slate-900 rounded px-2 py-0.5">
+              {binanceMode === 'real' ? 'Binance Futures Real' : 'Binance Futures Testnet'}
+            </span>
             <ChevronRight className="w-4 h-4 text-slate-600" />
             <span className="text-slate-500 font-bold uppercase tracking-wider">{activeSymbol}</span>
           </div>

@@ -10,6 +10,7 @@ const DEFAULT_CONFIG = {
   risk_per_trade: 1.0,
   max_positions: 3,
   timeframe: '15m',
+  binance_mode: 'demo',
   strategy_config: {
     indicators: {
       ma: { active: true, weight: 5 },
@@ -51,6 +52,7 @@ export async function GET() {
     }
 
     data.timeframe = data.timeframe || '15m';
+    data.binance_mode = process.env.BINANCE_MODE === 'real' ? 'real' : (data.binance_mode || 'demo');
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('[GET /api/bot/config] Error:', error);
@@ -84,6 +86,7 @@ export async function POST(request: Request) {
         'strategy_config', 'timeframe', 'session_filter', 'use_mtf',
         'always_in_market', 'leverage',
         'stop_loss_percent', 'take_profit_percent', 'max_trade_duration_minutes',
+        'binance_mode',
       ];
       allowedKeys.forEach(key => {
         if (body[key] !== undefined) {
@@ -108,6 +111,7 @@ export async function POST(request: Request) {
         delete updatePayload.timeframe;
         delete updatePayload.session_filter;
         delete updatePayload.use_mtf;
+        delete updatePayload.binance_mode;
         result = await supabase.from('bot_config').update(updatePayload).eq('id', existing.id).select().limit(1);
       }
     } else {
@@ -132,6 +136,9 @@ export async function POST(request: Request) {
     }
 
     const returnData = result?.data ? (Array.isArray(result.data) ? result.data[0] : result.data) : { ...existing, ...body };
+    if (process.env.BINANCE_MODE === 'real') {
+      returnData.binance_mode = 'real';
+    }
     return NextResponse.json(returnData, { status: 200 });
   } catch (error: any) {
     console.error('[POST /api/bot/config] Error:', error);

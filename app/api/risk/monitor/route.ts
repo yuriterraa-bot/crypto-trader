@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { getPositions, fetchCandles, getBalance } from '@/lib/binance';
 import { trailingStop, breakEven, dailyLossLimit } from '@/lib/strategies/riskManager';
 
+export const dynamic = 'force-dynamic';
+
 // Endpoint chamado via Cron ou internamente
 export async function GET() {
   try {

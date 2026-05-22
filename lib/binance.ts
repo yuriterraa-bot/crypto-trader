@@ -1,13 +1,29 @@
 import axios from 'axios';
 import crypto from 'crypto-js';
 
-const API_KEY = process.env.BINANCE_API_KEY || '';
-const SECRET_KEY = process.env.BINANCE_SECRET_KEY || '';
-const isTestnet = process.env.BINANCE_TESTNET === 'true';
-const BASE_URL = isTestnet ? 'https://demo-fapi.binance.com' : 'https://fapi.binance.com';
+export const getBinanceCredentials = (mode?: 'demo' | 'real') => {
+  // Se BINANCE_MODE estiver definido como 'real' nas variáveis de ambiente,
+  // forçamos o modo 'real' em toda a aplicação.
+  const activeMode = process.env.BINANCE_MODE === 'real' ? 'real' : (mode || process.env.BINANCE_MODE || 'demo');
+  const isReal = activeMode === 'real';
 
-const generateSignature = (queryString: string) => {
-  return crypto.HmacSHA256(queryString, SECRET_KEY).toString(crypto.enc.Hex);
+  const baseUrl = isReal 
+    ? 'https://fapi.binance.com'
+    : 'https://demo-fapi.binance.com';
+
+  const apiKey = isReal
+    ? (process.env.BINANCE_REAL_API_KEY || process.env.BINANCE_API_KEY || '')
+    : (process.env.BINANCE_API_KEY || '');
+
+  const secretKey = isReal
+    ? (process.env.BINANCE_REAL_SECRET_KEY || process.env.BINANCE_SECRET_KEY || '')
+    : (process.env.BINANCE_SECRET_KEY || '');
+
+  return { baseUrl, apiKey, secretKey, isReal };
+};
+
+const generateSignature = (queryString: string, secretKey: string) => {
+  return crypto.HmacSHA256(queryString, secretKey).toString(crypto.enc.Hex);
 };
 
 const createQueryString = (params: Record<string, any>) => {
@@ -17,20 +33,31 @@ const createQueryString = (params: Record<string, any>) => {
     .join('&');
 };
 
-const api = axios.create({
-  baseURL: BASE_URL,
-  headers: {
-    'X-MBX-APIKEY': API_KEY,
-  },
-});
+export const getBinanceClient = (mode?: 'demo' | 'real') => {
+  const { baseUrl, apiKey } = getBinanceCredentials(mode);
+  return axios.create({
+    baseURL: baseUrl,
+    headers: {
+      'X-MBX-APIKEY': apiKey,
+    },
+  });
+};
 
-export const getBalance = async () => {
+const api = {
+  get: (url: string, config?: any) => getBinanceClient().get(url, config),
+  post: (url: string, data?: any, config?: any) => getBinanceClient().post(url, data, config),
+  delete: (url: string, config?: any) => getBinanceClient().delete(url, config),
+  put: (url: string, data?: any, config?: any) => getBinanceClient().put(url, data, config),
+};
+
+export const getBalance = async (mode?: 'demo' | 'real') => {
+  const { secretKey } = getBinanceCredentials(mode);
   const timestamp = Date.now();
   const queryString = createQueryString({ timestamp });
-  const signature = generateSignature(queryString);
+  const signature = generateSignature(queryString, secretKey);
 
   try {
-    const response = await api.get(`/fapi/v2/balance?${queryString}&signature=${signature}`);
+    const response = await getBinanceClient(mode).get(`/fapi/v2/balance?${queryString}&signature=${signature}`);
     return response.data;
   } catch (error) {
     console.error('Binance API Error (getBalance):', error);
@@ -58,7 +85,8 @@ export const getPrices = async () => {
   }
 };
 
-export const getPositions = async (symbol?: string) => {
+export const getPositions = async (symbol?: string, mode?: 'demo' | 'real') => {
+  const { secretKey } = getBinanceCredentials(mode);
   const timestamp = Date.now();
   const params: Record<string, any> = { timestamp };
   if (symbol) {
@@ -66,10 +94,10 @@ export const getPositions = async (symbol?: string) => {
   }
   
   const queryString = createQueryString(params);
-  const signature = generateSignature(queryString);
+  const signature = generateSignature(queryString, secretKey);
 
   try {
-    const response = await api.get(`/fapi/v2/positionRisk?${queryString}&signature=${signature}`);
+    const response = await getBinanceClient(mode).get(`/fapi/v2/positionRisk?${queryString}&signature=${signature}`);
     return response.data;
   } catch (error) {
     console.error('Binance API Error (getPositions):', error);
@@ -85,42 +113,11 @@ export const createOrder = async (
   price?: number,
   timeInForce?: 'GTC' | 'IOC' | 'FOK'
 ) => {
-  const timestamp = Date.now();
-  const params: Record<string, any> = {
-    symbol,
-    side,
-    type,
-    quantity,
-    timestamp,
-  };
-
-  if (price) params.price = price;
-  if (timeInForce) params.timeInForce = timeInForce;
-
-  const queryString = createQueryString(params);
-  const signature = generateSignature(queryString);
-
-  try {
-    const response = await api.post(`/fapi/v1/order?${queryString}&signature=${signature}`);
-    return response.data;
-  } catch (error) {
-    console.error('Binance API Error (createOrder):', error);
-    throw error;
-  }
+  throw new Error("A API Binance está em modo READ-ONLY. Operação de criação de ordem bloqueada.");
 };
 
 export const cancelOrder = async (symbol: string, orderId: number) => {
-  const timestamp = Date.now();
-  const queryString = createQueryString({ symbol, orderId, timestamp });
-  const signature = generateSignature(queryString);
-
-  try {
-    const response = await api.delete(`/fapi/v1/order?${queryString}&signature=${signature}`);
-    return response.data;
-  } catch (error) {
-    console.error('Binance API Error (cancelOrder):', error);
-    throw error;
-  }
+  throw new Error("A API Binance está em modo READ-ONLY. Operação de cancelamento de ordem bloqueada.");
 };
 
 export const fetchCandles = async (symbol: string, interval: string = '15m', limit: number = 200) => {
@@ -143,79 +140,22 @@ export const fetchCandles = async (symbol: string, interval: string = '15m', lim
 export const getKlines = fetchCandles; // Keep compatibility
 
 export const setLeverage = async (symbol: string, leverage: number) => {
-  const timestamp = Date.now();
-  const queryString = createQueryString({ symbol, leverage, timestamp });
-  const signature = generateSignature(queryString);
-
-  try {
-    const response = await api.post(`/fapi/v1/leverage?${queryString}&signature=${signature}`);
-    return response.data;
-  } catch (error) {
-    console.error('Binance API Error (setLeverage):', error);
-    throw error;
-  }
+  throw new Error("A API Binance está em modo READ-ONLY. Operação de alavancagem bloqueada.");
 };
 
 export const createRawOrder = async (params: Record<string, any>) => {
-  const timestamp = Date.now();
-  const allParams = { ...params, timestamp };
-  const queryString = createQueryString(allParams);
-  const signature = generateSignature(queryString);
-
-  try {
-    const response = await api.post(`/fapi/v1/order?${queryString}&signature=${signature}`);
-    return response.data;
-  } catch (error) {
-    console.error('Binance API Error (createRawOrder):', error);
-    throw error;
-  }
+  throw new Error("A API Binance está em modo READ-ONLY. Operação de criação de ordem bloqueada.");
 };
 
 /**
- * Fecha uma posição existente usando reduceOnly MARKET order
- * quantity = Math.abs(positionAmt) da posição
+ * Mantido apenas para referência (Bloqueado)
  */
 export const closePosition = async (symbol: string, side: 'BUY' | 'SELL', quantity?: number) => {
-  const timestamp = Date.now();
-  let qty = quantity;
-
-  // Se não foi passada a quantidade, buscar da API
-  if (!qty) {
-    const positions = await getPositions(symbol).catch(() => []);
-    const pos = positions.find((p: any) => p.symbol === symbol);
-    qty = Math.abs(parseFloat(pos?.positionAmt || '0'));
-  }
-
-  if (!qty || qty <= 0) {
-    throw new Error(`closePosition: quantity inválida (${qty}) para ${symbol}`);
-  }
-
-  // Formatar quantidade com precisão correta
-  const quantityStr = symbol.includes('BTC')
-    ? qty.toFixed(3)
-    : symbol.includes('ETH')
-      ? qty.toFixed(2)
-      : qty.toFixed(1);
-
-  const queryString = createQueryString({
-    symbol, side, type: 'MARKET',
-    quantity: quantityStr,
-    reduceOnly: 'true',
-    timestamp,
-  });
-  const signature = generateSignature(queryString);
-  try {
-    const response = await api.post(`/fapi/v1/order?${queryString}&signature=${signature}`);
-    console.log(`[closePosition] ${symbol} ${side} ${quantityStr} → filled`);
-    return response.data;
-  } catch (error: any) {
-    console.error('[closePosition] error:', symbol, side, error.response?.data || error.message);
-    throw error;
-  }
+  throw new Error("A API Binance está em modo READ-ONLY. Operação de fechamento de posição bloqueada.");
 };
 
 /**
- * Abre uma nova posição MARKET com alavancagem
+ * Mantido apenas para referência (Bloqueado)
  */
 export const openPosition = async (
   symbol: string,
@@ -223,31 +163,9 @@ export const openPosition = async (
   quantity: number,
   leverage: number = 3
 ) => {
-  // Definir alavancagem primeiro
-  try {
-    await setLeverage(symbol, leverage);
-  } catch (e) {
-    console.warn('setLeverage warning:', e);
-  }
-
-  const timestamp = Date.now();
-  const queryString = createQueryString({
-    symbol,
-    side,
-    type: 'MARKET',
-    quantity: quantity.toFixed(3),
-    timestamp,
-  });
-  const signature = generateSignature(queryString);
-
-  try {
-    const response = await api.post(`/fapi/v1/order?${queryString}&signature=${signature}`);
-    return response.data;
-  } catch (error) {
-    console.error('Binance API Error (openPosition):', error);
-    throw error;
-  }
+  throw new Error("A API Binance está em modo READ-ONLY. Operação de abertura de posição bloqueada.");
 };
+
 
 /**
  * Calcula a quantidade de contratos para um dado valor USDT e preço
@@ -341,5 +259,56 @@ export const fetchLongShortRatio = async (symbol: string, period = '5m') => {
     return { longShortRatio: 1.0, longAccount: 0.5, shortAccount: 0.5, timestamp: Date.now() };
   }
 };
+
+/**
+ * Busca histórico de trades da conta Binance (últimos 90 dias ou por par)
+ */
+export const getUserTrades = async (symbol?: string, startTime?: number, mode?: 'demo' | 'real') => {
+  const { secretKey } = getBinanceCredentials(mode);
+  const timestamp = Date.now();
+  const params: Record<string, any> = { timestamp };
+  
+  if (symbol) {
+    params.symbol = symbol;
+  }
+  if (startTime) {
+    params.startTime = startTime;
+  }
+
+  const queryString = createQueryString(params);
+  const signature = generateSignature(queryString, secretKey);
+
+  try {
+    const response = await getBinanceClient(mode).get(`/fapi/v1/userTrades?${queryString}&signature=${signature}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Binance API Error (getUserTrades) for ${symbol || 'all'}:`, error);
+    throw error;
+  }
+};
+
+export const fetchTradeHistory = getUserTrades;
+
+export const fetchIncomeHistory = async (startTime?: number, mode?: 'demo' | 'real') => {
+  const { secretKey } = getBinanceCredentials(mode);
+  const timestamp = Date.now();
+  const params: Record<string, any> = { timestamp };
+  
+  if (startTime) {
+    params.startTime = startTime;
+  }
+
+  const queryString = createQueryString(params);
+  const signature = generateSignature(queryString, secretKey);
+
+  try {
+    const response = await getBinanceClient(mode).get(`/fapi/v1/income?${queryString}&signature=${signature}`);
+    return response.data;
+  } catch (error) {
+    console.error('Binance API Error (fetchIncomeHistory):', error);
+    throw error;
+  }
+};
+
 
 

@@ -18,7 +18,11 @@ interface HealthData {
 export default function SystemStatus() {
   const [health, setHealth] = useState<HealthData>({ supabase: false, binance: false });
   const [lastCron, setLastCron] = useState<Date | null>(null);
-  const [botConfig, setBotConfig] = useState<{ is_running: boolean, is_paper_trade: boolean }>({ is_running: false, is_paper_trade: true });
+  const [botConfig, setBotConfig] = useState<{ is_running: boolean, is_paper_trade: boolean, binance_mode: 'demo' | 'real' }>({
+    is_running: false,
+    is_paper_trade: true,
+    binance_mode: 'demo'
+  });
   const [loading, setLoading] = useState(false);
 
   const fetchHealth = async () => {
@@ -52,7 +56,8 @@ export default function SystemStatus() {
       if (data) {
         setBotConfig({
           is_running: data.is_running === true,
-          is_paper_trade: data.is_paper_trade
+          is_paper_trade: data.is_paper_trade,
+          binance_mode: data.binance_mode || 'demo'
         });
       }
     } catch (e) {
@@ -129,12 +134,18 @@ export default function SystemStatus() {
           <div className="bg-primary/20 p-2 rounded-lg">
             <Bot className="h-5 w-5 text-primary" />
           </div>
-          <span className="font-bold text-lg tracking-tight hidden sm:inline-block">CryptoBot IA</span>
+          <span className="font-bold text-lg tracking-tight hidden sm:inline-block">CryptoAnalyst Pro</span>
         </div>
         
-        <Badge className={`border-0 text-[10px] uppercase font-bold tracking-wider ${isTestnet ? 'bg-amber-500/20 text-amber-500 hover:bg-amber-500/30' : 'bg-green-500/20 text-green-500 hover:bg-green-500/30'}`}>
-          {isTestnet ? '🧪 TESTNET' : '🟢 LIVE'}
-        </Badge>
+        {botConfig.binance_mode === 'real' ? (
+          <Badge className="bg-rose-500 hover:bg-rose-600 text-white text-[10px] uppercase font-bold tracking-wider px-3 py-1.5 animate-pulse border border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.6)]">
+            🔴 CONTA REAL
+          </Badge>
+        ) : (
+          <Badge className="bg-amber-500 hover:bg-amber-600 text-black text-[10px] uppercase font-bold tracking-wider px-3 py-1.5 border border-amber-400 font-semibold">
+            🟡 DEMO
+          </Badge>
+        )}
       </div>
 
       <div className="hidden md:flex items-center space-x-6 text-xs text-muted-foreground bg-secondary/50 px-4 py-2 rounded-full border border-border/50">

@@ -14,7 +14,9 @@ import {
   calcRSI,
   calcEMA,
   calcDidi,
-  calcNadarayaWatson
+  calcNadarayaWatson,
+  detectPatterns,
+  detectDivergences
 } from '@/lib/indicators';
 import { analyzeMultiTimeframe } from './multiTimeframe';
 import { getCurrentSession } from './sessionFilter';
@@ -84,6 +86,20 @@ export interface AssetAnalysis {
       mid: number;
       signal: 'COMPRA' | 'VENDA' | 'NEUTRO';
     };
+    patterns: {
+      name: string;
+      type: 'bullish' | 'bearish' | 'neutral';
+      strength: 'fraco' | 'moderado' | 'forte';
+      description: string;
+      candleIndex: number;
+    }[];
+    divergences: {
+      type: 'bullish_regular' | 'bearish_regular' | 'bullish_hidden' | 'bearish_hidden';
+      description: string;
+      strength: 'fraco' | 'moderado' | 'forte';
+      startIndex: number;
+      endIndex: number;
+    }[];
   };
   
   // Multi Timeframe Analysis
@@ -280,9 +296,26 @@ export async function analyzeAsset(symbol: string, timeframe = '15m'): Promise<A
     nwPoints = -15;
   }
 
+  // 3.5. Detect Candle Patterns and RSI Divergences
+  const patternList = detectPatterns(candles);
+  let patternPoints = 0;
+  patternList.forEach(p => {
+    if (p.strength === 'forte') {
+      if (p.type === 'bullish') patternPoints += 8;
+      if (p.type === 'bearish') patternPoints -= 8;
+    }
+  });
+
+  const divergenceList = detectDivergences(candles, rsiArr);
+  let divergencePoints = 0;
+  divergenceList.forEach(d => {
+    if (d.type.startsWith('bullish')) divergencePoints += 12;
+    if (d.type.startsWith('bearish')) divergencePoints -= 12;
+  });
+
   // 4. Calculate technicalScore (-100 to +100)
   // Max possible bullish points = 20 (EMA) + 15 (RSI) + 15 (MACD) + 15 (BB) + 10 (Stoch) + 10 (Fib) + 15 (SMC) + 10 (Didi) + 15 (NW) = 125
-  const rawScore = emaPoints + rsiPoints + macdPoints + bbPoints + stochPoints + fibPoints + smcPoints + didiPoints + nwPoints;
+  const rawScore = emaPoints + rsiPoints + macdPoints + bbPoints + stochPoints + fibPoints + smcPoints + didiPoints + nwPoints + patternPoints + divergencePoints;
   const maxPossible = 125;
   const technicalScore = Math.min(100, Math.max(-100, Math.round((rawScore / maxPossible) * 100)));
 
@@ -371,7 +404,9 @@ export async function analyzeAsset(symbol: string, timeframe = '15m'): Promise<A
         lower: lastNWLower,
         mid: lastNWMid,
         signal: nwSignal
-      }
+      },
+      patterns: patternList,
+      divergences: divergenceList
     },
 
     mtf: mtfResult,

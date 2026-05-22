@@ -303,11 +303,11 @@ export default function AnalysisModal({ symbol, onClose }: AnalysisModalProps) {
                   <ul className="space-y-2 text-xs">
                     <li className="flex justify-between border-b border-slate-850/50 pb-1.5">
                       <span className="text-slate-400">Long/Short Ratio:</span>
-                      <span className={`font-semibold ${analysis.derivatives?.longShortRatio > 1.2 ? 'text-emerald-400' : 'text-slate-200'}`}>{analysis.derivatives?.longShortRatio.toFixed(2)}</span>
+                      <span className={`font-semibold ${(analysis.derivatives?.longShortRatio || 1.0) > 1.2 ? 'text-emerald-400' : 'text-slate-200'}`}>{(analysis.derivatives?.longShortRatio || 1.0).toFixed(2)}</span>
                     </li>
                     <li className="flex justify-between border-b border-slate-850/50 pb-1.5">
                       <span className="text-slate-400">Funding Rate:</span>
-                      <span className="font-semibold text-slate-200">{(analysis.derivatives?.fundingRate * 100).toFixed(4)}%</span>
+                      <span className="font-semibold text-slate-200">{((analysis.derivatives?.fundingRate || 0) * 100).toFixed(4)}%</span>
                     </li>
                     <li className="flex justify-between">
                       <span className="text-slate-400">Véspera de Sessão:</span>
@@ -334,10 +334,10 @@ export default function AnalysisModal({ symbol, onClose }: AnalysisModalProps) {
                 <div className="bg-slate-900/30 border border-slate-850 rounded-xl p-4">
                   <h4 className="text-slate-100 text-xs font-bold uppercase tracking-wider border-b border-slate-850 pb-2 mb-3">Média Móvel Exponencial (EMA)</h4>
                   <ul className="space-y-2 text-xs">
-                    <li className="flex justify-between"><span className="text-slate-450">EMA 9:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators.ema.ema9).toLocaleString()}</span></li>
-                    <li className="flex justify-between"><span className="text-slate-450">EMA 21:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators.ema.ema21).toLocaleString()}</span></li>
-                    <li className="flex justify-between"><span className="text-slate-450">EMA 50:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators.ema.ema50).toLocaleString()}</span></li>
-                    <li className="flex justify-between border-t border-slate-850 pt-1.5"><span className="text-slate-400">Tendência:</span> <span className={`font-bold ${analysis.indicators.ema.signal === 'BULLISH' ? 'text-emerald-450' : 'text-rose-450'}`}>{analysis.indicators.ema.signal}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-450">EMA 9:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators?.ema?.ema9 || 0).toLocaleString()}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-450">EMA 21:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators?.ema?.ema21 || 0).toLocaleString()}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-450">EMA 50:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators?.ema?.ema50 || 0).toLocaleString()}</span></li>
+                    <li className="flex justify-between border-t border-slate-850 pt-1.5"><span className="text-slate-400">Tendência:</span> <span className={`font-bold ${analysis.indicators?.ema?.signal === 'BULLISH' ? 'text-emerald-450' : 'text-rose-450'}`}>{analysis.indicators?.ema?.signal || 'NEUTRO'}</span></li>
                   </ul>
                 </div>
 
@@ -345,11 +345,11 @@ export default function AnalysisModal({ symbol, onClose }: AnalysisModalProps) {
                 <div className="bg-slate-900/30 border border-slate-850 rounded-xl p-4">
                   <h4 className="text-slate-100 text-xs font-bold uppercase tracking-wider border-b border-slate-850 pb-2 mb-3">RSI (Relative Strength Index)</h4>
                   <ul className="space-y-2 text-xs">
-                    <li className="flex justify-between"><span className="text-slate-455">Valor RSI (14):</span> <span className="font-mono text-slate-200">{analysis.indicators.rsi.value.toFixed(2)}</span></li>
-                    <li className="flex justify-between"><span className="text-slate-455">Estado:</span> <span className={`font-bold ${analysis.indicators.rsi.signal === 'OVERSOLD' ? 'text-emerald-400 animate-pulse' : analysis.indicators.rsi.signal === 'OVERBOUGHT' ? 'text-rose-400 animate-pulse' : 'text-slate-300'}`}>{analysis.indicators.rsi.signal}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-455">Valor RSI (14):</span> <span className="font-mono text-slate-200">{(analysis.indicators?.rsi?.value || 50).toFixed(2)}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-455">Estado:</span> <span className={`font-bold ${analysis.indicators?.rsi?.signal === 'OVERSOLD' ? 'text-emerald-400 animate-pulse' : analysis.indicators?.rsi?.signal === 'OVERBOUGHT' ? 'text-rose-400 animate-pulse' : 'text-slate-300'}`}>{analysis.indicators?.rsi?.signal || 'NEUTRO'}</span></li>
                     <div className="h-2 w-full bg-slate-850 rounded-full overflow-hidden flex relative mt-3">
                       <div className="absolute top-0 bottom-0 left-1/3 right-1/3 bg-slate-800" />
-                      <div className="h-full bg-indigo-500 absolute" style={{ left: `${analysis.indicators.rsi.value}%`, width: '4px', transform: 'translateX(-2px)' }} />
+                      <div className="h-full bg-indigo-500 absolute" style={{ left: `${analysis.indicators?.rsi?.value || 50}%`, width: '4px', transform: 'translateX(-2px)' }} />
                     </div>
                   </ul>
                 </div>
@@ -358,10 +358,10 @@ export default function AnalysisModal({ symbol, onClose }: AnalysisModalProps) {
                 <div className="bg-slate-900/30 border border-slate-850 rounded-xl p-4">
                   <h4 className="text-slate-100 text-xs font-bold uppercase tracking-wider border-b border-slate-850 pb-2 mb-3">MACD (12, 26, 9)</h4>
                   <ul className="space-y-2 text-xs">
-                    <li className="flex justify-between"><span className="text-slate-455">Linha MACD:</span> <span className="font-mono text-slate-200">{analysis.indicators.macd.macd.toFixed(4)}</span></li>
-                    <li className="flex justify-between"><span className="text-slate-455">Linha de Sinal:</span> <span className="font-mono text-slate-200">{analysis.indicators.macd.signalLine.toFixed(4)}</span></li>
-                    <li className="flex justify-between"><span className="text-slate-455">Histograma:</span> <span className={`font-mono font-bold ${analysis.indicators.macd.histogram >= 0 ? 'text-emerald-450' : 'text-rose-450'}`}>{analysis.indicators.macd.histogram.toFixed(4)}</span></li>
-                    <li className="flex justify-between border-t border-slate-850 pt-1.5"><span className="text-slate-400">Tendência:</span> <span className={`font-bold ${analysis.indicators.macd.trend === 'BULLISH' ? 'text-emerald-450' : 'text-rose-450'}`}>{analysis.indicators.macd.trend}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-455">Linha MACD:</span> <span className="font-mono text-slate-200">{(analysis.indicators?.macd?.macd || 0).toFixed(4)}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-455">Linha de Sinal:</span> <span className="font-mono text-slate-200">{(analysis.indicators?.macd?.signalLine || 0).toFixed(4)}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-455">Histograma:</span> <span className={`font-mono font-bold ${(analysis.indicators?.macd?.histogram || 0) >= 0 ? 'text-emerald-450' : 'text-rose-450'}`}>{(analysis.indicators?.macd?.histogram || 0).toFixed(4)}</span></li>
+                    <li className="flex justify-between border-t border-slate-850 pt-1.5"><span className="text-slate-400">Tendência:</span> <span className={`font-bold ${analysis.indicators?.macd?.trend === 'BULLISH' ? 'text-emerald-450' : 'text-rose-450'}`}>{analysis.indicators?.macd?.trend || 'NEUTRO'}</span></li>
                   </ul>
                 </div>
 
@@ -369,10 +369,10 @@ export default function AnalysisModal({ symbol, onClose }: AnalysisModalProps) {
                 <div className="bg-slate-900/30 border border-slate-850 rounded-xl p-4">
                   <h4 className="text-slate-100 text-xs font-bold uppercase tracking-wider border-b border-slate-850 pb-2 mb-3">Bandas de Bollinger (20, 2)</h4>
                   <ul className="space-y-2 text-xs">
-                    <li className="flex justify-between"><span className="text-slate-455">Banda Superior:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators.bollinger.upper).toLocaleString()}</span></li>
-                    <li className="flex justify-between"><span className="text-slate-455">Banda Média:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators.bollinger.middle).toLocaleString()}</span></li>
-                    <li className="flex justify-between"><span className="text-slate-455">Banda Inferior:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators.bollinger.lower).toLocaleString()}</span></li>
-                    <li className="flex justify-between border-t border-slate-850 pt-1.5"><span className="text-slate-400">Percentual B (%B):</span> <span className="font-mono font-bold text-slate-200">{(analysis.indicators.bollinger.percentB * 100).toFixed(1)}%</span></li>
+                    <li className="flex justify-between"><span className="text-slate-455">Banda Superior:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators?.bollinger?.upper || 0).toLocaleString()}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-455">Banda Média:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators?.bollinger?.middle || 0).toLocaleString()}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-455">Banda Inferior:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators?.bollinger?.lower || 0).toLocaleString()}</span></li>
+                    <li className="flex justify-between border-t border-slate-850 pt-1.5"><span className="text-slate-400">Percentual B (%B):</span> <span className="font-mono font-bold text-slate-200">{((analysis.indicators?.bollinger?.percentB || 0) * 100).toFixed(1)}%</span></li>
                   </ul>
                 </div>
 
@@ -382,20 +382,20 @@ export default function AnalysisModal({ symbol, onClose }: AnalysisModalProps) {
                   <ul className="space-y-2 text-xs">
                     <li className="flex justify-between">
                       <span className="text-slate-455">BOS (Quebra):</span> 
-                      <span className={`font-bold ${analysis.indicators.smc.bos?.direction === 'BULLISH' ? 'text-emerald-450' : analysis.indicators.smc.bos?.direction === 'BEARISH' ? 'text-rose-450' : 'text-slate-400'}`}>
-                        {analysis.indicators.smc.bos ? `${analysis.indicators.smc.bos.direction} ($${Math.round(analysis.indicators.smc.bos.price)})` : 'Nenhum'}
+                      <span className={`font-bold ${analysis.indicators?.smc?.bos?.direction === 'BULLISH' ? 'text-emerald-450' : analysis.indicators?.smc?.bos?.direction === 'BEARISH' ? 'text-rose-450' : 'text-slate-400'}`}>
+                        {analysis.indicators?.smc?.bos ? `${analysis.indicators.smc.bos.direction} ($${Math.round(analysis.indicators.smc.bos.price)})` : 'Nenhum'}
                       </span>
                     </li>
                     <li className="flex justify-between">
                       <span className="text-slate-455">CHoCH:</span> 
-                      <span className={`font-bold ${analysis.indicators.smc.choch?.direction === 'BULLISH' ? 'text-emerald-450' : analysis.indicators.smc.choch?.direction === 'BEARISH' ? 'text-rose-450' : 'text-slate-400'}`}>
-                        {analysis.indicators.smc.choch ? `${analysis.indicators.smc.choch.direction} ($${Math.round(analysis.indicators.smc.choch.price)})` : 'Nenhum'}
+                      <span className={`font-bold ${analysis.indicators?.smc?.choch?.direction === 'BULLISH' ? 'text-emerald-450' : analysis.indicators?.smc?.choch?.direction === 'BEARISH' ? 'text-rose-450' : 'text-slate-400'}`}>
+                        {analysis.indicators?.smc?.choch ? `${analysis.indicators.smc.choch.direction} ($${Math.round(analysis.indicators.smc.choch.price)})` : 'Nenhum'}
                       </span>
                     </li>
                     <li className="flex justify-between">
                       <span className="text-slate-455">Order Blocks:</span> 
                       <span className="font-semibold text-slate-250">
-                        {analysis.indicators.smc.orderBlocks?.length || 0} detectados
+                        {analysis.indicators?.smc?.orderBlocks?.length || 0} detectados
                       </span>
                     </li>
                   </ul>
@@ -405,9 +405,9 @@ export default function AnalysisModal({ symbol, onClose }: AnalysisModalProps) {
                 <div className="bg-slate-900/30 border border-slate-850 rounded-xl p-4">
                   <h4 className="text-slate-100 text-xs font-bold uppercase tracking-wider border-b border-slate-850 pb-2 mb-3">Nadaraya-Watson Envelope</h4>
                   <ul className="space-y-2 text-xs">
-                    <li className="flex justify-between"><span className="text-slate-455">Envelope Superior:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators.nadaraya.upper).toLocaleString()}</span></li>
-                    <li className="flex justify-between"><span className="text-slate-455">Envelope Inferior:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators.nadaraya.lower).toLocaleString()}</span></li>
-                    <li className="flex justify-between border-t border-slate-850 pt-1.5"><span className="text-slate-400">Sinal:</span> <span className={`font-bold ${analysis.indicators.nadaraya.signal === 'COMPRA' ? 'text-emerald-450 animate-pulse' : analysis.indicators.nadaraya.signal === 'VENDA' ? 'text-rose-450 animate-pulse' : 'text-slate-350'}`}>{analysis.indicators.nadaraya.signal}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-455">Envelope Superior:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators?.nadaraya?.upper || 0).toLocaleString()}</span></li>
+                    <li className="flex justify-between"><span className="text-slate-455">Envelope Inferior:</span> <span className="font-mono text-slate-200">${Math.round(analysis.indicators?.nadaraya?.lower || 0).toLocaleString()}</span></li>
+                    <li className="flex justify-between border-t border-slate-850 pt-1.5"><span className="text-slate-400">Sinal:</span> <span className={`font-bold ${analysis.indicators?.nadaraya?.signal === 'COMPRA' ? 'text-emerald-450 animate-pulse' : analysis.indicators?.nadaraya?.signal === 'VENDA' ? 'text-rose-450 animate-pulse' : 'text-slate-350'}`}>{analysis.indicators?.nadaraya?.signal || 'NEUTRO'}</span></li>
                   </ul>
                 </div>
               </div>
@@ -422,18 +422,18 @@ export default function AnalysisModal({ symbol, onClose }: AnalysisModalProps) {
                 <div className="bg-slate-900/30 border border-slate-850 rounded-xl p-5 relative overflow-hidden flex flex-col justify-between min-h-[140px]">
                   <div>
                     <h4 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">Long / Short Ratio</h4>
-                    <h3 className="text-3xl font-black text-slate-100">{analysis.derivatives.longShortRatio.toFixed(2)}</h3>
+                    <h3 className="text-3xl font-black text-slate-100">{(analysis.derivatives?.longShortRatio || 1.0).toFixed(2)}</h3>
                   </div>
                   
                   {/* Account separation bars */}
                   <div className="space-y-1.5 mt-2">
                     <div className="flex justify-between text-[10px] font-bold">
-                      <span className="text-emerald-400">Longs: {analysis.derivatives.longPercentage.toFixed(1)}%</span>
-                      <span className="text-rose-400">Shorts: {analysis.derivatives.shortPercentage.toFixed(1)}%</span>
+                      <span className="text-emerald-400">Longs: {(analysis.derivatives?.longPercentage || 50).toFixed(1)}%</span>
+                      <span className="text-rose-400">Shorts: {(analysis.derivatives?.shortPercentage || 50).toFixed(1)}%</span>
                     </div>
                     <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden flex">
-                      <div className="h-full bg-emerald-500" style={{ width: `${analysis.derivatives.longPercentage}%` }} />
-                      <div className="h-full bg-rose-500" style={{ width: `${analysis.derivatives.shortPercentage}%` }} />
+                      <div className="h-full bg-emerald-500" style={{ width: `${analysis.derivatives?.longPercentage || 50}%` }} />
+                      <div className="h-full bg-rose-500" style={{ width: `${analysis.derivatives?.shortPercentage || 50}%` }} />
                     </div>
                   </div>
                 </div>
@@ -442,14 +442,14 @@ export default function AnalysisModal({ symbol, onClose }: AnalysisModalProps) {
                 <div className="bg-slate-900/30 border border-slate-850 rounded-xl p-5 flex flex-col justify-between min-h-[140px]">
                   <div>
                     <h4 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">Taxa de Financiamento</h4>
-                    <h3 className={`text-2xl font-black ${analysis.derivatives.fundingRate >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {(analysis.derivatives.fundingRate * 100).toFixed(4)}%
+                    <h3 className={`text-2xl font-black ${(analysis.derivatives?.fundingRate || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {((analysis.derivatives?.fundingRate || 0) * 100).toFixed(4)}%
                     </h3>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 font-bold uppercase block mb-1">Impacto</span>
                     <p className="text-slate-400 text-xs">
-                      {analysis.derivatives.fundingRate >= 0 
+                      {(analysis.derivatives?.fundingRate || 0) >= 0 
                         ? 'Longs pagam Shorts (pressão de compra moderada)' 
                         : 'Shorts pagam Longs (sentimento pessimista extremo)'}
                     </p>
@@ -461,8 +461,8 @@ export default function AnalysisModal({ symbol, onClose }: AnalysisModalProps) {
                   <div>
                     <h4 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">Contratos Abertos (Open Interest)</h4>
                     <h3 className="text-2xl font-black text-slate-100">
-                      {analysis.derivatives.openInterest > 0 
-                        ? analysis.derivatives.openInterest.toLocaleString('en-US', { maximumFractionDigits: 1 })
+                      {(analysis.derivatives?.openInterest || 0) > 0 
+                        ? (analysis.derivatives?.openInterest || 0).toLocaleString('en-US', { maximumFractionDigits: 1 })
                         : 'Sem dados'}
                     </h3>
                   </div>

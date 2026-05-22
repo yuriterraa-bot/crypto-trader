@@ -17,6 +17,10 @@ export function calcEMA(closes: number[], period: number): number[] {
 }
 
 export function calcRSI(closes: number[], period = 14): number[] {
+  // Need at least period+1 candles for a valid RSI
+  if (closes.length < period + 1) {
+    return closes.map(() => NaN);
+  }
   const result: number[] = new Array(period).fill(NaN);
   let avgGain = 0, avgLoss = 0;
   for (let i = 1; i <= period; i++) {
@@ -24,12 +28,15 @@ export function calcRSI(closes: number[], period = 14): number[] {
     if (d > 0) avgGain += d; else avgLoss -= d;
   }
   avgGain /= period; avgLoss /= period;
-  result.push(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss));
+  // If avgLoss === 0, data is insufficient (all gains) — return 65 (bullish but uncertain)
+  const firstRsi = avgLoss === 0 ? 65 : Math.min(99, Math.max(1, 100 - 100 / (1 + avgGain / avgLoss)));
+  result.push(firstRsi);
   for (let i = period + 1; i < closes.length; i++) {
     const d = closes[i] - closes[i - 1];
     avgGain = (avgGain * (period - 1) + Math.max(0, d)) / period;
     avgLoss = (avgLoss * (period - 1) + Math.max(0, -d)) / period;
-    result.push(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss));
+    const rsi = avgLoss === 0 ? 65 : Math.min(99, Math.max(1, 100 - 100 / (1 + avgGain / avgLoss)));
+    result.push(rsi);
   }
   return result;
 }

@@ -1,32 +1,27 @@
 import { NextResponse } from 'next/server';
-import axios from 'axios';
-import crypto from 'crypto';
+import { getPositions } from '@/lib/binance';
+import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-const BASE_URL = process.env.BINANCE_TESTNET === 'true'
-  ? 'https://demo-fapi.binance.com'
-  : 'https://fapi.binance.com';
-
 export async function GET() {
   try {
-    const timestamp = Date.now();
-    const queryString = `timestamp=${timestamp}`;
-    const signature = crypto
-      .createHmac('sha256', process.env.BINANCE_SECRET_KEY!)
-      .update(queryString)
-      .digest('hex');
+    // 1. Obter o modo configurado (demo ou real)
+    const { data: configRows } = await supabase
+      .from('bot_config')
+      .select('binance_mode')
+      .order('updated_at', { ascending: false })
+      .limit(1);
 
-    const response = await axios.get(
-      `${BASE_URL}/fapi/v2/positionRisk?${queryString}&signature=${signature}`,
-      {
-        headers: { 'X-MBX-APIKEY': process.env.BINANCE_API_KEY! },
-        timeout: 8000,
-      }
-    );
+    const dbMode = configRows?.[0]?.binance_mode || 'demo';
+    const mode = process.env.BINANCE_MODE === 'real' ? 'real' : dbMode;
+
+    console.log(`[GET /api/binance/positions] Buscando posições. Modo: ${mode}`);
+
+    const positionsData = await getPositions(undefined, mode);
 
     // Filtrar RIGOROSAMENTE apenas posições com quantidade real
-    const openPositions = (response.data || []).filter((p: any) => {
+    const openPositions = (positionsData || []).filter((p: any) => {
       const amt = parseFloat(p.positionAmt || '0');
       return Math.abs(amt) > 0.0001;
     });

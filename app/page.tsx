@@ -5,6 +5,8 @@ import Navbar from '@/components/Navbar';
 import MarketOverview from '@/components/scanner/MarketOverview';
 import MarketScanner from '@/components/scanner/MarketScanner';
 import AnalysisModal from '@/components/scanner/AnalysisModal';
+import PositionHealthCard from '@/components/PositionHealthCard';
+import AccountDashboard from '@/components/AccountDashboard';
 import { RefreshCw, Play } from 'lucide-react';
 import Link from 'next/link';
 
@@ -14,6 +16,29 @@ export default function Home() {
   const [timeframe, setTimeframe] = useState('15m');
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [positionHealths, setPositionHealths] = useState<any[]>([]);
+  const [isLoadingPositions, setIsLoadingPositions] = useState(false);
+
+  const loadPositionHealths = async () => {
+    try {
+      setIsLoadingPositions(true);
+      const res = await fetch('/api/position/health');
+      if (!res.ok) throw new Error('Erro ao buscar saúde das posições');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setPositionHealths(data);
+      } else if (data.positions) {
+        setPositionHealths(data.positions);
+      } else {
+        setPositionHealths([]);
+      }
+    } catch (err) {
+      console.error('Failed to load position healths:', err);
+      setPositionHealths([]);
+    } finally {
+      setIsLoadingPositions(false);
+    }
+  };
 
   const loadScannerData = async (tf = timeframe, force = false) => {
     try {
@@ -36,10 +61,12 @@ export default function Home() {
 
   useEffect(() => {
     loadScannerData(timeframe);
+    loadPositionHealths();
 
     // Auto polling every 45s to keep prices fresh
     const interval = setInterval(() => {
       loadScannerData(timeframe, false);
+      loadPositionHealths();
     }, 45000);
 
     return () => clearInterval(interval);
@@ -113,6 +140,9 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Dashboard da Conta (Read-Only) */}
+        <AccountDashboard />
+
         {/* Error alert */}
         {error && (
           <div className="bg-rose-500/10 border border-rose-500/20 text-rose-450 p-4 rounded-xl text-xs font-semibold flex items-center gap-2">
@@ -130,6 +160,37 @@ export default function Home() {
           isLoading={isLoading} 
           onSelectAsset={(symbol) => setSelectedSymbol(symbol)} 
         />
+
+        {/* Seção 🏥 Saúde das Posições (IA) */}
+        <div className="space-y-4">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <span>🏥</span> Saúde das Posições (Análise IA)
+          </h2>
+          {isLoadingPositions ? (
+            <div className="border border-white/5 bg-slate-950/20 backdrop-blur-xl p-8 rounded-2xl flex flex-col items-center justify-center space-y-3">
+              <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+              <span className="text-xs text-slate-400 font-medium animate-pulse">Analisando saúde das posições abertas com Inteligência Artificial...</span>
+            </div>
+          ) : positionHealths.length > 0 ? (
+            <div className="grid grid-cols-1 gap-6">
+              {positionHealths.map((posHealth, idx) => (
+                <PositionHealthCard 
+                  key={posHealth.position?.symbol || idx} 
+                  data={posHealth} 
+                  onRefresh={loadPositionHealths} 
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="border border-white/5 bg-slate-950/20 backdrop-blur-xl p-8 rounded-2xl flex flex-col items-center justify-center text-center space-y-2">
+              <span className="text-xl">🩺</span>
+              <h3 className="text-xs font-bold text-slate-350">Nenhuma Posição Aberta Detectada</h3>
+              <p className="text-[11px] text-slate-500 max-w-sm">
+                Abra uma posição manual ou configure o robô para ver a análise de saúde em tempo real com recomendações de Stop Loss e Take Profit da IA baseadas em SMC e Fibonacci.
+              </p>
+            </div>
+          )}
+        </div>
 
       </main>
 

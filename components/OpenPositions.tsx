@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, XCircle, LayoutDashboard, Clock, TrendingUp, TrendingDown } from 'lucide-react';
+import { Loader2, LayoutDashboard, Clock, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react';
 
 export default function OpenPositions() {
   const [positions, setPositions] = useState<any[]>([]);
@@ -250,14 +250,12 @@ export default function OpenPositions() {
                       {/* Botão fechar */}
                       <TableCell className="text-right">
                         <Button
-                          size="sm" variant="destructive"
-                          className="h-7 text-xs bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white border border-red-500/20"
-                          onClick={() => handleClose(p.symbol, p.positionAmt)}
-                          disabled={closingMap[p.symbol]}
+                          size="sm" variant="outline"
+                          className="h-7 text-xs bg-indigo-500/10 text-indigo-450 hover:bg-indigo-600 hover:text-white border border-indigo-500/20"
+                          onClick={() => window.open(`https://www.binance.com/pt-BR/futures/${p.symbol}`, '_blank')}
                         >
-                          {closingMap[p.symbol]
-                            ? <Loader2 className="h-3 w-3 animate-spin" />
-                            : <><XCircle className="h-3 w-3 mr-1" />Fechar</>}
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          Ver na Binance
                         </Button>
                       </TableCell>
                     </TableRow>

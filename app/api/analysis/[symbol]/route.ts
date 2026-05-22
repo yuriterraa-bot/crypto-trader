@@ -58,8 +58,9 @@ export async function GET(
       try {
         const news = await fetchNews().catch(() => ({
           finalSentiment: { btc: 0, eth: 0 },
-          fearGreedIndex: 50
-        }));
+          fearGreedIndex: 50,
+          articles: []
+        })) as any;
 
         let newsSentiment = 0;
         if (symbol.includes('BTC')) newsSentiment = news.finalSentiment.btc;
@@ -85,8 +86,18 @@ export async function GET(
           mtfAlignment: analysis.mtf.trendAlignment,
           session: analysis.session.name,
           vwapBias: analysis.indicators.ema.signal,
-          volumeProfile: { poc: analysis.price, vah: analysis.price * 1.01, val: analysis.price * 0.99 },
-          lastTrades: []
+          volumeProfile: { 
+            poc: analysis.price, 
+            vah: analysis.price * 1.01, 
+            val: analysis.price * 0.99,
+            change24h: analysis.change24h,
+            volume24h: Math.round(analysis.volume24h / 1000000) // in millions
+          },
+          lastTrades: [],
+          patterns: analysis.indicators.patterns || [],
+          divergences: analysis.indicators.divergences || [],
+          derivatives: analysis.derivatives,
+          headlines: news.articles || []
         };
 
         const aiResult = await analyzeMarket(aiParams);

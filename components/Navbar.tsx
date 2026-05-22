@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BrainCircuit, Compass, BarChart2, Activity, ShieldCheck, Flame } from 'lucide-react';
+import { BrainCircuit, Compass, BarChart2, Activity, ShieldCheck, Flame, Wrench } from 'lucide-react';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -66,6 +66,17 @@ export default function Navbar() {
           >
             <BarChart2 className="w-4 h-4" />
             Painel Trading
+          </Link>
+          <Link
+            href="/tools"
+            className={`px-4 py-2 rounded-md text-xs font-extrabold flex items-center gap-1.5 transition-all duration-200 ${
+              pathname === '/tools' 
+                ? 'bg-slate-900 text-indigo-450 text-indigo-400 border border-slate-800' 
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Wrench className="w-4 h-4" />
+            Ferramentas
           </Link>
         </nav>
 
