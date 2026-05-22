@@ -145,6 +145,19 @@ export async function GET() {
     // Ordenar trades consolidados do mais recente para o mais antigo
     consolidatedTrades.sort((a, b) => b.time - a.time);
 
+    // If no consolidated trades from fills, build a simpler summary from income history
+    const finalTrades = consolidatedTrades.length > 0 ? consolidatedTrades : incomeHistory.map((item: any) => ({
+      symbol: item.symbol,
+      direction: parseFloat(item.income) >= 0 ? 'LONG' : 'SHORT',
+      entryPrice: 0,
+      exitPrice: 0,
+      qty: 0,
+      pnl: parseFloat(parseFloat(item.income).toFixed(2)),
+      pnlPercent: 0,
+      status: parseFloat(item.income) >= 0 ? 'WIN' : 'LOSS',
+      time: parseInt(item.time)
+    }));
+
     const result = {
       metrics: {
         winRate,
@@ -158,19 +171,6 @@ export async function GET() {
     };
 
     console.log(`[GET /api/account/history] Processado. Total de trades consolidados: ${totalTrades}, Win Rate: ${winRate}%`);
-
-    // If no consolidated trades from fills, build a simpler summary from income history
-    const finalTrades = consolidatedTrades.length > 0 ? consolidatedTrades : incomeHistory.map((item: any) => ({
-      symbol: item.symbol,
-      direction: parseFloat(item.income) >= 0 ? 'LONG' : 'SHORT',
-      entryPrice: 0,
-      exitPrice: 0,
-      qty: 0,
-      pnl: parseFloat(parseFloat(item.income).toFixed(2)),
-      pnlPercent: 0,
-      status: parseFloat(item.income) >= 0 ? 'WIN' : 'LOSS',
-      time: parseInt(item.time)
-    }));
 
     return NextResponse.json(result, {
       headers: {
