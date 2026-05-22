@@ -6,12 +6,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, LayoutDashboard, Clock, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react';
+// Read-Only mode: no order execution — positions are monitored only
 
 export default function OpenPositions() {
   const [positions, setPositions] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]); // trades abertos no Supabase (tem SL/TP)
   const [loading, setLoading] = useState(true);
-  const [closingMap, setClosingMap] = useState<Record<string, boolean>>({});
   const [config, setConfig] = useState<any>({ leverage: 3, stop_loss_percent: 1.0, take_profit_percent: 2.0 });
   const [now, setNow] = useState(Date.now());
 
@@ -50,46 +50,7 @@ export default function OpenPositions() {
     return () => { clearInterval(posInterval); clearInterval(clockInterval); };
   }, [fetchAll]);
 
-  const handleClose = async (symbol: string, positionAmt: string) => {
-    try {
-      setClosingMap(prev => ({ ...prev, [symbol]: true }));
-      // Para fechar SHORT (amt < 0) precisa de BUY; para LONG (amt > 0) precisa de SELL
-      const side = parseFloat(positionAmt) > 0 ? 'SELL' : 'BUY';
-      const res = await fetch('/api/orders/close', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol, side }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        const errMsg = data.error || JSON.stringify(data);
-        // Posição já foi fechada na Binance (reduceOnly sem posição aberta)
-        if (
-          errMsg.includes('-4061') ||
-          errMsg.includes('reduceOnly') ||
-          errMsg.includes('no position') ||
-          errMsg.includes('Position does not exist')
-        ) {
-          alert('✅ Posição já foi fechada na Binance. Atualizando lista...');
-        } else {
-          alert('Erro ao fechar posição: ' + errMsg);
-        }
-        await fetchAll();
-        return;
-      }
-
-      if (data.success || data.orderId || res.ok) {
-        alert('✅ Posição fechada com sucesso!');
-      }
-      await fetchAll();
-    } catch (e: any) {
-      alert('Erro de conexão ao fechar posição: ' + e.message);
-    } finally {
-      setClosingMap(prev => ({ ...prev, [symbol]: false }));
-    }
-  };
+  // Read-Only: order execution removed — use Binance directly to manage positions
 
   return (
     <Card className="col-span-full bg-card border-border shadow-md">
@@ -99,7 +60,7 @@ export default function OpenPositions() {
             <LayoutDashboard className="h-5 w-5 text-indigo-500" />
             <div>
               <CardTitle className="text-lg">Posições Abertas</CardTitle>
-              <CardDescription className="text-xs">Gerenciamento ao vivo · SL/TP · Tempo</CardDescription>
+              <CardDescription className="text-xs">Monitoramento ao vivo · SL/TP estimado · Tempo aberto</CardDescription>
             </div>
           </div>
           {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}

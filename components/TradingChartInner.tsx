@@ -208,7 +208,7 @@ export default function TradingChartInner({ symbol = 'BTCUSDT' }: { symbol?: str
             size: 2,
           };
         });
-        candleRef.current?.setMarkers(markers.length > 0 ? markers as any : []);
+        (candleRef.current as any)?.setMarkers(markers.length > 0 ? markers : []);
 
         // Desenhar linhas de preço para cada posição
         openPos.forEach((p: any) => {

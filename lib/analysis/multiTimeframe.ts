@@ -27,7 +27,7 @@ export async function analyzeMultiTimeframe(symbol: string, primaryTF: string) {
       const candles = await fetchCandles(symbol, tf, 100);
       if (candles.length < 50) continue;
 
-      const closes = candles.map(c => c.close);
+      const closes = candles.map((c: { close: number }) => c.close);
       const ema20 = calculateEMA(20, closes);
       const ema50 = calculateEMA(50, closes);
       const currentPrice = closes[closes.length - 1];

@@ -313,8 +313,6 @@ export default function StrategyPanel() {
                 </div>
               </label>
             </div>
-
-            )}
           </div>
 
         {/* ── CONFIGURAÇÕES DE SCALPING ── */}

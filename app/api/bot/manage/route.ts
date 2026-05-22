@@ -95,12 +95,14 @@ export async function GET() {
 
         // Update Supabase record (best-effort)
         if (trade?.id) {
-          await supabase.from('trades').update({
-            status: closeReason,
-            exit_price: currentPrice,
-            pnl: pnlUSDT,
-            closed_at: new Date().toISOString(),
-          }).eq('id', trade.id).catch(() => {});
+          try {
+            await supabase.from('trades').update({
+              status: closeReason,
+              exit_price: currentPrice,
+              pnl: pnlUSDT,
+              closed_at: new Date().toISOString(),
+            }).eq('id', trade.id);
+          } catch { /* best-effort, ignore failures */ }
         }
 
         managed.push({

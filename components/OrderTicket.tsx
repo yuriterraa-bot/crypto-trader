@@ -304,7 +304,7 @@ export default function OrderTicket({ activeSymbol }: { activeSymbol?: string } 
             
             {/* Quick selector of symbol */}
             <div className="w-[110px]">
-              <Select value={symbol} onValueChange={setSymbol}>
+              <Select value={symbol} onValueChange={(val) => { if (val) setSymbol(val); }}>
                 <SelectTrigger className="bg-slate-950 border-slate-800 text-xs font-bold h-9">
                   <SelectValue placeholder="Symbol" />
                 </SelectTrigger>

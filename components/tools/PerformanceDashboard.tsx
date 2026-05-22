@@ -212,7 +212,7 @@ export default function PerformanceDashboard({ entries = [] }: { entries: Journa
                     contentStyle={{ backgroundColor: '#0a0a0f', borderColor: '#1e293b', borderRadius: '12px' }}
                     labelStyle={{ color: '#94a3b8', fontSize: '11px', fontWeight: 'bold' }}
                     itemStyle={{ fontSize: '11px', fontWeight: 'extrabold' }}
-                    formatter={(value) => [`$${value.toLocaleString()}`]}
+                    formatter={(value) => [`$${value != null ? Number(value).toLocaleString() : '0'}`]}
                   />
                   <Area type="monotone" dataKey="Saldo" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorEquity)" />
                 </AreaChart>

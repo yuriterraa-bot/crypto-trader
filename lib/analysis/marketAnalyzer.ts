@@ -326,7 +326,7 @@ export async function analyzeAsset(symbol: string, timeframe = '15m'): Promise<A
   else if (technicalScore <= -20) technicalSignal = 'VENDA';
 
   // 5. Multi-Timeframe Analysis
-  let mtfResult = { trendAlignment: 'MIXED', confirmationScore: 0, details: [] };
+  let mtfResult: { trendAlignment: string; confirmationScore: number; details: any[] } = { trendAlignment: 'MIXED', confirmationScore: 0, details: [] };
   try {
     mtfResult = await analyzeMultiTimeframe(symbol, timeframe);
   } catch (err) {

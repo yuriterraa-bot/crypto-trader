@@ -88,20 +88,20 @@ export const runConfluenceEngine = (
     let smcSignalStr = '';
 
     if (choch) {
-      smcScore += choch.direction === 'bullish' ? weight : -weight;
+      smcScore += choch.direction === 'BULLISH' ? weight : -weight;
       smcSignalStr += `CHoCH ${choch.direction} `;
     } else if (bos) {
-      smcScore += bos.direction === 'bullish' ? weight * 0.5 : -weight * 0.5;
+      smcScore += bos.direction === 'BULLISH' ? weight * 0.5 : -weight * 0.5;
       smcSignalStr += `BOS ${bos.direction} `;
     }
 
     const currentPrice = closes[closes.length - 1];
     const recentFvg = fvgs.slice(-3).find(f => !f.filled);
     if (recentFvg) {
-      if (recentFvg.type === 'bullish' && currentPrice <= recentFvg.bottom * 1.002) {
+      if (recentFvg.direction === 'BULLISH' && currentPrice <= recentFvg.bottom * 1.002) {
          smcScore += weight * 0.5;
          smcSignalStr += 'At Bullish FVG ';
-      } else if (recentFvg.type === 'bearish' && currentPrice >= recentFvg.top * 0.998) {
+      } else if (recentFvg.direction === 'BEARISH' && currentPrice >= recentFvg.top * 0.998) {
          smcScore -= weight * 0.5;
          smcSignalStr += 'At Bearish FVG ';
       }

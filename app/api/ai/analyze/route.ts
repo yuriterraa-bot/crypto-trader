@@ -13,7 +13,14 @@ export async function POST(request: Request) {
       recentCandles: candles.slice(-10),
       confluenceScore,
       technicalSignals,
-      newsSentiment
+      newsSentiment,
+      timeframe: body.timeframe || '15m',
+      fearAndGreed: body.fearAndGreed || 50,
+      mtfAlignment: body.mtfAlignment || 'MIXED',
+      session: body.session || 'UNKNOWN',
+      vwapBias: body.vwapBias || 'NEUTRO',
+      volumeProfile: body.volumeProfile || null,
+      lastTrades: body.lastTrades || []
     });
 
     // Save to Supabase

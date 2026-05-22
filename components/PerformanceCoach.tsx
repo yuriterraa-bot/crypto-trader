@@ -7,6 +7,7 @@ import {
   HelpCircle, Sparkles, MessageSquare, Lightbulb, PieChart, ShieldAlert
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 

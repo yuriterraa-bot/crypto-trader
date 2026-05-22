@@ -224,7 +224,7 @@ export default function BreakEvenCalculator() {
                     contentStyle={{ backgroundColor: '#0a0a0f', borderColor: '#1e293b', borderRadius: '12px' }}
                     labelStyle={{ color: '#94a3b8', fontSize: '11px', fontWeight: 'bold' }}
                     itemStyle={{ fontSize: '11px', fontWeight: 'extrabold' }}
-                    formatter={(value) => [`$${value.toLocaleString()}`]}
+                    formatter={(value) => [`$${value != null ? Number(value).toLocaleString() : '0'}`]}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', paddingTop: '10px' }} />
                   <Area type="monotone" dataKey="Otimista" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorOpt)" />
