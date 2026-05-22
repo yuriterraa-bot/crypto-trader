@@ -38,96 +38,102 @@ export async function GET() {
       console.warn('Could not fetch Fear & Greed, using fallback 50');
     }
 
-    const results = [];
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Analyze each position
-    for (const pos of openPositions) {
-      const symbol = pos.symbol;
-      const positionAmt = parseFloat(pos.positionAmt);
-      const isLong = positionAmt > 0;
-      const leverage = parseInt(pos.leverage, 10);
-      const entryPrice = parseFloat(pos.entryPrice);
-      const liquidationPrice = parseFloat(pos.liquidationPrice);
-      const unrealizedProfit = parseFloat(pos.unrealizedProfit || pos.unRealizedProfit || '0');
-      
-      const currentPrice = parseFloat(pos.markPrice || pos.entryPrice);
-      const positionValue = Math.abs(positionAmt) * currentPrice;
-      const margin = positionValue / leverage;
-      const pnl = unrealizedProfit;
-      const pnlPercent = margin > 0 ? (pnl / margin) * 100 : 0;
+    // Analyze each position in parallel with a slight stagger delay
+    const results = await Promise.all(
+      openPositions.map(async (pos: any, index: number) => {
+        if (index > 0) {
+          // Stagger the calls by 300ms per index to prevent sudden API request bursts
+          await delay(index * 300);
+        }
 
-      // 3. Fetch Technical analysis in 4H and 1D in parallel (handling failures gracefully)
-      let analysis4h: any = null;
-      let analysis1d: any = null;
-
-      try {
-        const [a4h, a1d] = await Promise.allSettled([
-          analyzeAsset(symbol, '4h'),
-          analyzeAsset(symbol, '1d')
-        ]);
+        const symbol = pos.symbol;
+        const positionAmt = parseFloat(pos.positionAmt);
+        const isLong = positionAmt > 0;
+        const leverage = parseInt(pos.leverage, 10);
+        const entryPrice = parseFloat(pos.entryPrice);
+        const liquidationPrice = parseFloat(pos.liquidationPrice);
+        const unrealizedProfit = parseFloat(pos.unrealizedProfit || pos.unRealizedProfit || '0');
         
-        if (a4h.status === 'fulfilled') analysis4h = a4h.value;
-        if (a1d.status === 'fulfilled') analysis1d = a1d.value;
-      } catch (err) {
-        console.error(`Error analyzing asset technicals for ${symbol}:`, err);
-      }
+        const currentPrice = parseFloat(pos.markPrice || pos.entryPrice);
+        const positionValue = Math.abs(positionAmt) * currentPrice;
+        const margin = positionValue / leverage;
+        const pnl = unrealizedProfit;
+        const pnlPercent = margin > 0 ? (pnl / margin) * 100 : 0;
 
-      // Default technical indicators fallback if analysis failed
-      const score4h = analysis4h ? analysis4h.technicalScore : 0;
-      const score1d = analysis1d ? analysis1d.technicalScore : 0;
-      const rsi4h = analysis4h ? parseFloat(analysis4h.indicators.rsi.value.toFixed(1)) : 50.0;
-      const rsi1d = analysis1d ? parseFloat(analysis1d.indicators.rsi.value.toFixed(1)) : 50.0;
-      const trend4h = analysis4h ? analysis4h.indicators.ema.signal : 'NEUTRO';
-      const trend1d = analysis1d ? analysis1d.indicators.ema.signal : 'NEUTRO';
-      
-      let smcSignal = 'Sem sinal claro';
-      if (analysis4h?.indicators?.smc) {
-        const smc = analysis4h.indicators.smc;
-        if (smc.choch) smcSignal = `CHoCH ${smc.choch.direction}`;
-        else if (smc.bos) smcSignal = `BOS ${smc.bos.direction}`;
-      }
+        // 3. Fetch Technical analysis in 4H and 1D in parallel (handling failures gracefully)
+        let analysis4h: any = null;
+        let analysis1d: any = null;
 
-      const patterns = analysis4h ? analysis4h.indicators.patterns.map((p: any) => p.name) : [];
-      const divergences = analysis4h ? analysis4h.indicators.divergences.map((d: any) => d.description) : [];
+        try {
+          const [a4h, a1d] = await Promise.allSettled([
+            analyzeAsset(symbol, '4h'),
+            analyzeAsset(symbol, '1d')
+          ]);
+          
+          if (a4h.status === 'fulfilled') analysis4h = a4h.value;
+          if (a1d.status === 'fulfilled') analysis1d = a1d.value;
+        } catch (err) {
+          console.error(`Error analyzing asset technicals for ${symbol}:`, err);
+        }
 
-      // Calculate support and resistance from Bollinger or Fibonacci
-      let fib618 = currentPrice * 0.95;
-      let fib382 = currentPrice * 1.05;
-      let nearestSupport = currentPrice * 0.97;
-      let nearestResistance = currentPrice * 1.03;
+        // Default technical indicators fallback if analysis failed
+        const score4h = analysis4h ? analysis4h.technicalScore : 0;
+        const score1d = analysis1d ? analysis1d.technicalScore : 0;
+        const rsi4h = analysis4h ? parseFloat(analysis4h.indicators.rsi.value.toFixed(1)) : 50.0;
+        const rsi1d = analysis1d ? parseFloat(analysis1d.indicators.rsi.value.toFixed(1)) : 50.0;
+        const trend4h = analysis4h ? analysis4h.indicators.ema.signal : 'NEUTRO';
+        const trend1d = analysis1d ? analysis1d.indicators.ema.signal : 'NEUTRO';
+        
+        let smcSignal = 'Sem sinal claro';
+        if (analysis4h?.indicators?.smc) {
+          const smc = analysis4h.indicators.smc;
+          if (smc.choch) smcSignal = `CHoCH ${smc.choch.direction}`;
+          else if (smc.bos) smcSignal = `BOS ${smc.bos.direction}`;
+        }
 
-      if (analysis4h?.indicators?.fibonacci?.levels) {
-        const levels = analysis4h.indicators.fibonacci.levels;
-        const fib618Level = levels.find((l: any) => Math.abs(l.ratio - 0.618) < 0.05);
-        const fib382Level = levels.find((l: any) => Math.abs(l.ratio - 0.382) < 0.05);
-        if (fib618Level) fib618 = fib618Level.price;
-        if (fib382Level) fib382 = fib382Level.price;
+        const patterns = analysis4h ? analysis4h.indicators.patterns.map((p: any) => p.name) : [];
+        const divergences = analysis4h ? analysis4h.indicators.divergences.map((d: any) => d.description) : [];
 
-        const sorted = [...levels].sort((a, b) => a.price - b.price);
-        const supports = sorted.filter((l: any) => l.price < currentPrice);
-        const resistances = sorted.filter((l: any) => l.price > currentPrice);
-        if (supports.length > 0) nearestSupport = supports[supports.length - 1].price;
-        if (resistances.length > 0) nearestResistance = resistances[0].price;
-      }
+        // Calculate support and resistance from Bollinger or Fibonacci
+        let fib618 = currentPrice * 0.95;
+        let fib382 = currentPrice * 1.05;
+        let nearestSupport = currentPrice * 0.97;
+        let nearestResistance = currentPrice * 1.03;
 
-      const fundingRate = analysis4h ? (analysis4h.derivatives.fundingRate * 100).toFixed(4) : '0.0100';
+        if (analysis4h?.indicators?.fibonacci?.levels) {
+          const levels = analysis4h.indicators.fibonacci.levels;
+          const fib618Level = levels.find((l: any) => Math.abs(l.ratio - 0.618) < 0.05);
+          const fib382Level = levels.find((l: any) => Math.abs(l.ratio - 0.382) < 0.05);
+          if (fib618Level) fib618 = fib618Level.price;
+          if (fib382Level) fib382 = fib382Level.price;
 
-      // 4. Fetch trade open time from journal entries
-      const { data: journalRows } = await supabase
-        .from('journal_entries')
-        .select('created_at')
-        .eq('symbol', symbol)
-        .order('created_at', { ascending: false })
-        .limit(1);
+          const sorted = [...levels].sort((a, b) => a.price - b.price);
+          const supports = sorted.filter((l: any) => l.price < currentPrice);
+          const resistances = sorted.filter((l: any) => l.price > currentPrice);
+          if (supports.length > 0) nearestSupport = supports[supports.length - 1].price;
+          if (resistances.length > 0) nearestResistance = resistances[0].price;
+        }
 
-      let hoursOpen = 12;
-      if (journalRows && journalRows.length > 0) {
-        const openTime = new Date(journalRows[0].created_at).getTime();
-        hoursOpen = Math.max(1, Math.round((Date.now() - openTime) / (1000 * 60 * 60)));
-      }
+        const fundingRate = analysis4h ? (analysis4h.derivatives.fundingRate * 100).toFixed(4) : '0.0100';
 
-      // 5. Structure prompt and call Groq
-      const prompt = `Você é um gestor de risco experiente analisando uma posição aberta de futuros de criptomoedas.
+        // 4. Fetch trade open time from journal entries
+        const { data: journalRows } = await supabase
+          .from('journal_entries')
+          .select('created_at')
+          .eq('symbol', symbol)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        let hoursOpen = 12;
+        if (journalRows && journalRows.length > 0) {
+          const openTime = new Date(journalRows[0].created_at).getTime();
+          hoursOpen = Math.max(1, Math.round((Date.now() - openTime) / (1000 * 60 * 60)));
+        }
+
+        // 5. Structure prompt and call Groq
+        const prompt = `Você é um gestor de risco experiente analisando uma posição aberta de futuros de criptomoedas.
 Seja direto, objetivo e profissional.
 
 === POSIÇÃO ABERTA ===
@@ -185,102 +191,102 @@ Responda APENAS com este JSON (sem markdown, sem texto extra):
   ]
 }`;
 
-      let aiResult: any = {
-        health: 'NEUTRO',
-        action: 'MANTER',
-        urgency: 'baixa',
-        stopLoss: isLong ? entryPrice * 0.95 : entryPrice * 1.05,
-        takeProfit: isLong ? entryPrice * 1.10 : entryPrice * 0.90,
-        stopReasoning: 'Nível de stop de segurança padrão baseado em volatilidade.',
-        tpReasoning: 'Nível de take profit de segurança padrão baseado em volatilidade.',
-        mainRisk: 'Ausência de análise de IA em tempo real.',
-        opportunity: 'Melhora de confluência técnica geral.',
-        analysis: 'A análise da inteligência artificial está indisponível no momento. Exibindo dados de segurança padrões.',
-        checklist: ['Verificar se há notícias de alto impacto programadas', 'Monitorar proximidade do preço de liquidação', 'Manter a gestão de risco e stop operacionais']
-      };
+        let aiResult: any = {
+          health: 'NEUTRO',
+          action: 'MANTER',
+          urgency: 'baixa',
+          stopLoss: isLong ? entryPrice * 0.95 : entryPrice * 1.05,
+          takeProfit: isLong ? entryPrice * 1.10 : entryPrice * 0.90,
+          stopReasoning: 'Nível de stop de segurança padrão baseado em volatilidade.',
+          tpReasoning: 'Nível de take profit de segurança padrão baseado em volatilidade.',
+          mainRisk: 'Ausência de análise de IA em tempo real.',
+          opportunity: 'Melhora de confluência técnica geral.',
+          analysis: 'A análise da inteligência artificial está indisponível no momento. Exibindo dados de segurança padrões.',
+          checklist: ['Verificar se há notícias de alto impacto programadas', 'Monitorar proximidade do preço de liquidação', 'Manter a gestão de risco e stop operacionais']
+        };
 
-      console.log('GROQ_API_KEY exists:', !!process.env.GROQ_API_KEY);
-      console.log(`GROQ_API_KEY info: length=${process.env.GROQ_API_KEY ? process.env.GROQ_API_KEY.length : 0}, startsWithGsk=${process.env.GROQ_API_KEY ? process.env.GROQ_API_KEY.startsWith('gsk_') : false}, valueIsQuote=${process.env.GROQ_API_KEY === '""' || process.env.GROQ_API_KEY === "''"}`);
-      if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== '""' && process.env.GROQ_API_KEY !== "''") {
-        try {
-          const { content } = await fetchGroqWithFallback(
-            [{ role: 'user', content: prompt }],
-            800,
-            0.3
-          );
+        console.log(`[Position Health - ${symbol}] GROQ_API_KEY exists:`, !!process.env.GROQ_API_KEY);
+        if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== '""' && process.env.GROQ_API_KEY !== "''") {
+          try {
+            const { content } = await fetchGroqWithFallback(
+              [{ role: 'user', content: prompt }],
+              800,
+              0.3
+            );
 
-          console.log('Groq fallback success, content length:', content.length);
+            console.log(`[Position Health - ${symbol}] Groq fallback success, content length:`, content.length);
 
-          // Extract JSON from the response
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            try {
-              const parsed = JSON.parse(jsonMatch[0]);
-              const normalized: any = {};
-              Object.keys(parsed).forEach(k => {
-                normalized[k.replace(/['"]/g, '')] = parsed[k];
-              });
+            // Extract JSON from the response
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              try {
+                const parsed = JSON.parse(jsonMatch[0]);
+                const normalized: any = {};
+                Object.keys(parsed).forEach(k => {
+                  normalized[k.replace(/['"]/g, '')] = parsed[k];
+                });
 
-              aiResult = {
-                health: normalized.health || 'NEUTRO',
-                action: normalized.action || 'MANTER',
-                urgency: normalized.urgency || 'baixa',
-                stopLoss: Number(normalized.stopLoss) || (isLong ? entryPrice * 0.95 : entryPrice * 1.05),
-                takeProfit: Number(normalized.takeProfit) || (isLong ? entryPrice * 1.10 : entryPrice * 0.90),
-                stopReasoning: normalized.stopReasoning || 'Recomendado por confluência.',
-                tpReasoning: normalized.tpReasoning || 'Recomendado por confluência.',
-                mainRisk: normalized.mainRisk || 'Volatilidade do mercado.',
-                opportunity: normalized.opportunity || 'Movimento direcional favorável.',
-                analysis: normalized.analysis || 'Análise executada com sucesso.',
-                checklist: Array.isArray(normalized.checklist) ? normalized.checklist : []
-              };
-            } catch (parseErr) {
-              console.error('Failed to parse Groq JSON output:', parseErr, content);
+                aiResult = {
+                  health: normalized.health || 'NEUTRO',
+                  action: normalized.action || 'MANTER',
+                  urgency: normalized.urgency || 'baixa',
+                  stopLoss: Number(normalized.stopLoss) || (isLong ? entryPrice * 0.95 : entryPrice * 1.05),
+                  takeProfit: Number(normalized.takeProfit) || (isLong ? entryPrice * 1.10 : entryPrice * 0.90),
+                  stopReasoning: normalized.stopReasoning || 'Recomendado por confluência.',
+                  tpReasoning: normalized.tpReasoning || 'Recomendado por confluência.',
+                  mainRisk: normalized.mainRisk || 'Volatilidade do mercado.',
+                  opportunity: normalized.opportunity || 'Movimento direcional favorável.',
+                  analysis: normalized.analysis || 'Análise executada com sucesso.',
+                  checklist: Array.isArray(normalized.checklist) ? normalized.checklist : []
+                };
+              } catch (parseErr) {
+                console.error(`Failed to parse Groq JSON output for ${symbol}:`, parseErr, content);
+              }
+            } else {
+              console.error(`No JSON found in Groq response for ${symbol}:`, content);
             }
-          } else {
-            console.error('No JSON found in Groq response:', content);
+          } catch (groqErr) {
+            console.error(`Groq AI request error for ${symbol} after all fallbacks:`, groqErr);
           }
-        } catch (groqErr) {
-          console.error('Groq AI request error after all fallbacks:', groqErr);
         }
-      }
 
-      results.push({
-        position: {
-          symbol,
-          positionAmt,
-          isLong,
-          leverage,
-          entryPrice,
-          currentPrice,
-          liquidationPrice,
-          pnl,
-          pnlPercent,
-          positionValue,
-          margin,
-          hoursOpen
-        },
-        technicalContext: {
-          score4h,
-          score1d,
-          rsi4h,
-          rsi1d,
-          trend4h,
-          trend1d,
-          smcSignal,
-          patterns,
-          divergences,
-          nearestSupport,
-          nearestResistance,
-          fib618,
-          fib382,
-          fearGreed,
-          fundingRate
-        },
-        aiAnalysis: aiResult,
-        analyzedAt: new Date().toISOString()
-      });
-    }
+        return {
+          position: {
+            symbol,
+            positionAmt,
+            isLong,
+            leverage,
+            entryPrice,
+            currentPrice,
+            liquidationPrice,
+            pnl,
+            pnlPercent,
+            positionValue,
+            margin,
+            hoursOpen
+          },
+          technicalContext: {
+            score4h,
+            score1d,
+            rsi4h,
+            rsi1d,
+            trend4h,
+            trend1d,
+            smcSignal,
+            patterns,
+            divergences,
+            nearestSupport,
+            nearestResistance,
+            fib618,
+            fib382,
+            fearGreed,
+            fundingRate
+          },
+          aiAnalysis: aiResult,
+          analyzedAt: new Date().toISOString()
+        };
+      })
+    );
 
     return NextResponse.json(results);
   } catch (error: any) {
